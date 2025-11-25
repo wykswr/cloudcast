@@ -1,0 +1,110 @@
+{
+  "Comment": "CloudCast media processing pipeline",
+  "StartAt": "ExtractContext",
+  "States": {
+    "ExtractContext": {
+      "Type": "Pass",
+      "Parameters": {
+        "bucket.$": "$.detail.bucket.name",
+        "key.$": "$.detail.object.key",
+        "userId.$": "States.ArrayGetItem(States.StringSplit($.detail.object.key, '/'), 0)",
+        "videoId.$": "States.ArrayGetItem(States.StringSplit($.detail.object.key, '/'), 1)",
+        "processedBucket": "${ProcessedBucketName}",
+        "videosTable": "${VideosTableName}"
+      },
+      "ResultPath": "$",
+      "Next": "CreateMediaConvertJob"
+    },
+    "CreateMediaConvertJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::mediaconvert:createJob.sync",
+      "Parameters": {
+        "Role": "${MediaConvertRoleArn}",
+        "UserMetadata": {
+          "video_id.$": "$.videoId",
+          "user_id.$": "$.userId"
+        },
+        "Settings": {
+          "Inputs": [
+            {
+              "FileInput.$": "States.Format('s3://{}/{}', $.bucket, $.key)",
+              "AudioSelectors": {
+                "Audio Selector 1": {
+                  "DefaultSelection": "DEFAULT"
+                }
+              },
+              "VideoSelector": {}
+            }
+          ],
+          "OutputGroups": [
+            {
+              "Name": "Apple HLS",
+              "OutputGroupSettings": {
+                "Type": "HLS_GROUP_SETTINGS",
+                "HlsGroupSettings": {
+                  "Destination.$": "States.Format('s3://{}/{}/{}/hls/', $.processedBucket, $.userId, $.videoId)",
+                  "SegmentLength": 4,
+                  "MinSegmentLength": 0
+                }
+              },
+              "Outputs": [
+                {
+                  "Preset": "System-Avc_16x9_720p_29_97fps_8Mbps"
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "ResultPath": "$.createJob",
+      "Catch": [
+        {
+          "ErrorEquals": ["States.ALL"],
+          "Next": "MarkFailed"
+        }
+      ],
+      "Next": "MarkReady"
+    },
+    "MarkReady": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName.$": "$.videosTable",
+        "Key": {
+          "user_id": { "S.$": "$.userId" },
+          "id": { "S.$": "$.videoId" }
+        },
+        "UpdateExpression": "SET #status = :ready, s3_key_hls = :hls",
+        "ExpressionAttributeNames": {
+          "#status": "status"
+        },
+        "ExpressionAttributeValues": {
+          ":ready": { "S": "ready" },
+          ":hls": { "S.$": "States.Format('{}/{}/hls/playlist.m3u8', $.userId, $.videoId)" }
+        }
+      },
+      "ResultPath": "$.dynamodb",
+      "End": true
+    },
+    "MarkFailed": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:updateItem",
+      "Parameters": {
+        "TableName.$": "$.videosTable",
+        "Key": {
+          "user_id": { "S.$": "$.userId" },
+          "id": { "S.$": "$.videoId" }
+        },
+        "UpdateExpression": "SET #status = :failed",
+        "ExpressionAttributeNames": {
+          "#status": "status"
+        },
+        "ExpressionAttributeValues": {
+          ":failed": { "S": "failed" }
+        }
+      },
+      "ResultPath": "$.dynamodb",
+      "End": true
+    }
+  }
+}
