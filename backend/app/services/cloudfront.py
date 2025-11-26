@@ -18,11 +18,14 @@ class CloudFrontURLSigner:
 
     def _load_private_key(self):
         key_data: bytes | None = None
-        if self.settings.cloudfront_private_key:
-            normalized = self.settings.cloudfront_private_key.replace("\\n", "\n")
-            key_data = normalized.encode("utf-8")
-        elif self.settings.cloudfront_private_key_path:
+        if self.settings.cloudfront_private_key_path:
             key_data = Path(self.settings.cloudfront_private_key_path).read_bytes()
+        elif self.settings.cloudfront_private_key:
+            # Ignore the placeholder value that ships in the sample .env
+            placeholder = "REPLACE_ME"
+            if placeholder not in self.settings.cloudfront_private_key:
+                normalized = self.settings.cloudfront_private_key.replace("\\n", "\n")
+                key_data = normalized.encode("utf-8")
 
         if not key_data:
             raise ValueError(
@@ -39,8 +42,25 @@ class CloudFrontURLSigner:
         )
 
     def sign(self, object_path: str) -> str:
-        url = f"https://{self.settings.cloudfront_domain}/{object_path.lstrip('/')}"
+        normalized = object_path.lstrip("/")
+        manifest_url = f"https://{self.settings.cloudfront_domain}/{normalized}"
+        # Sign the entire HLS prefix (master + variants + segments) so the same
+        # token works for every request under the folder.
+        prefix = normalized.rsplit("/", 1)[0] if "/" in normalized else ""
+        wildcard_resource = (
+            f"https://{self.settings.cloudfront_domain}/{prefix}/*"
+            if prefix
+            else manifest_url
+        )
+
         expires = datetime.now(timezone.utc) + timedelta(
             minutes=self.settings.stream_url_ttl_minutes
         )
-        return self._signer.generate_presigned_url(url, date_less_than=expires)
+        policy = self._signer.build_policy(
+            wildcard_resource,
+            date_less_than=expires,
+        )
+        return self._signer.generate_presigned_url(
+            manifest_url,
+            policy=policy,
+        )

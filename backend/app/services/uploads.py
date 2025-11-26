@@ -1,5 +1,6 @@
 import time
 import uuid
+from pathlib import Path
 from typing import Iterable
 
 from botocore.exceptions import ClientError
@@ -130,7 +131,10 @@ class UploadService:
                 detail="No upload parts provided",
             )
 
-        hls_key = video.get("s3_key_hls") or f"{user.id}/{video_id}/hls/playlist.m3u8"
+        # Derive the HLS master manifest name from the original upload filename so it
+        # matches MediaConvert's default naming convention.
+        stem = Path(video["s3_key_raw"]).name.rsplit(".", 1)[0]
+        hls_key = video.get("s3_key_hls") or f"{user.id}/{video_id}/hls/{stem}.m3u8"
 
         try:
             self.s3.complete_multipart_upload(

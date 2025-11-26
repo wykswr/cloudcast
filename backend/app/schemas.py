@@ -67,3 +67,7 @@ class StreamResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     stream_url: str = Field(..., alias="streamUrl")
+
+
+class DeleteVideoResponse(BaseModel):
+    status: str

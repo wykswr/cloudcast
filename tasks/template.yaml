@@ -44,9 +44,10 @@ Resources:
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders: ["*"]
-            AllowedMethods: ["PUT", "POST", "HEAD"]
-            AllowedOrigins: ["*"]
+            AllowedMethods: ["PUT", "POST", "GET", "HEAD"]
+            AllowedOrigins: ["http://localhost:5173"]
             ExposedHeaders: ["ETag"]
+            MaxAge: 3000
       NotificationConfiguration:
         EventBridgeConfiguration:
           EventBridgeEnabled: true
@@ -63,7 +64,7 @@ Resources:
       CorsConfiguration:
         CorsRules:
           - AllowedHeaders: ["*"]
-            AllowedMethods: ["GET", "HEAD"]
+            AllowedMethods: ["HEAD", "GET", "POST"]
             AllowedOrigins: ["*"]
       OwnershipControls:
         Rules:
@@ -165,9 +166,24 @@ Resources:
               Resource: "*"
             - Effect: Allow
               Action:
+                - iam:PassRole
+              Resource:
+                - !GetAtt MediaConvertRole.Arn
+            - Effect: Allow
+              Action:
                 - dynamodb:UpdateItem
               Resource:
                 - !GetAtt VideosTable.Arn
+            - Effect: Allow
+              Action:
+                - events:PutRule
+                - events:PutTargets
+                - events:DescribeRule
+                - events:DeleteRule
+                - events:RemoveTargets
+              Resource: "*"
+        - EventBridgePutEventsPolicy:
+            EventBusName: default
       Events:
         S3UploadEvent:
           Type: EventBridgeRule
@@ -183,11 +199,31 @@ Resources:
                     - !Ref RawUploadsBucket
 
 
-  CloudFrontOAI:
-    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+  CloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
     Properties:
-      CloudFrontOriginAccessIdentityConfig:
-        Comment: !Sub "OAI for CloudCast processed videos ${Env}"
+      OriginAccessControlConfig:
+        Description: !Sub "OAC for CloudCast processed videos ${Env}"
+        Name: !Sub "cloudcast-oac-${Env}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  CloudFrontPublicKey:
+    Type: AWS::CloudFront::PublicKey
+    Properties:
+      PublicKeyConfig:
+        CallerReference: !Sub "${AWS::StackName}-${Env}-cloudcast-pubkey"
+        Name: !Sub "cloudcast-pubkey-${Env}"
+        EncodedKey: "{{resolve:ssm:/cloudcast/dev/cloudfront-public-key}}"
+
+  CloudFrontKeyGroup:
+    Type: AWS::CloudFront::KeyGroup
+    Properties:
+      KeyGroupConfig:
+        Name: !Sub "cloudcast-keygroup-${Env}"
+        Items:
+          - !GetAtt CloudFrontPublicKey.Id
 
   ProcessedBucketPolicy:
     Type: AWS::S3::BucketPolicy
@@ -198,10 +234,13 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              CanonicalUser: !GetAtt CloudFrontOAI.S3CanonicalUserId
+              Service: cloudfront.amazonaws.com
             Action:
               - s3:GetObject
             Resource: !Sub "${ProcessedVideosBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${CloudFrontDistribution}"
 
   CloudFrontDistribution:
     Type: AWS::CloudFront::Distribution
@@ -214,7 +253,8 @@ Resources:
           - Id: ProcessedVideosOrigin
             DomainName: !GetAtt ProcessedVideosBucket.DomainName
             S3OriginConfig:
-              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontOAI}"
+              OriginAccessIdentity: ""
+            OriginAccessControlId: !Ref CloudFrontOAC
         DefaultCacheBehavior:
           TargetOriginId: ProcessedVideosOrigin
           ViewerProtocolPolicy: redirect-to-https
@@ -227,6 +267,8 @@ Resources:
           Compress: true
           ForwardedValues:
             QueryString: false
+          TrustedKeyGroups:
+            - !Ref CloudFrontKeyGroup
         PriceClass: PriceClass_100
 
 Outputs:
@@ -248,3 +290,5 @@ Outputs:
     Value: !Ref ProcessingStateMachine
   CloudFrontDomain:
     Value: !GetAtt CloudFrontDistribution.DomainName
+  CloudFrontKeyId:
+    Value: !GetAtt CloudFrontPublicKey.Id

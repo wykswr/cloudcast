@@ -1,33 +1,33 @@
 {
   "Comment": "CloudCast media processing pipeline",
+  "QueryLanguage": "JSONata",
   "StartAt": "ExtractContext",
   "States": {
     "ExtractContext": {
       "Type": "Pass",
-      "Parameters": {
-        "bucket.$": "$.detail.bucket.name",
-        "key.$": "$.detail.object.key",
-        "userId.$": "States.ArrayGetItem(States.StringSplit($.detail.object.key, '/'), 0)",
-        "videoId.$": "States.ArrayGetItem(States.StringSplit($.detail.object.key, '/'), 1)",
+      "Assign": {
+        "bucket": "{% $states.input.detail.bucket.name %}",
+        "key": "{% $states.input.detail.object.key %}",
+        "userId": "{% $split($states.input.detail.object.key, '/')[0] %}",
+        "videoId": "{% $split($states.input.detail.object.key, '/')[1] %}",
         "processedBucket": "${ProcessedBucketName}",
         "videosTable": "${VideosTableName}"
       },
-      "ResultPath": "$",
       "Next": "CreateMediaConvertJob"
     },
     "CreateMediaConvertJob": {
       "Type": "Task",
       "Resource": "arn:aws:states:::mediaconvert:createJob.sync",
-      "Parameters": {
+      "Arguments": {
         "Role": "${MediaConvertRoleArn}",
         "UserMetadata": {
-          "video_id.$": "$.videoId",
-          "user_id.$": "$.userId"
+          "video_id": "{% $videoId %}",
+          "user_id": "{% $userId %}"
         },
         "Settings": {
           "Inputs": [
             {
-              "FileInput.$": "States.Format('s3://{}/{}', $.bucket, $.key)",
+              "FileInput": "{% 's3://' & $bucket & '/' & $key %}",
               "AudioSelectors": {
                 "Audio Selector 1": {
                   "DefaultSelection": "DEFAULT"
@@ -42,24 +42,56 @@
               "OutputGroupSettings": {
                 "Type": "HLS_GROUP_SETTINGS",
                 "HlsGroupSettings": {
-                  "Destination.$": "States.Format('s3://{}/{}/{}/hls/', $.processedBucket, $.userId, $.videoId)",
+                  "Destination": "{% 's3://' & $processedBucket & '/' & $userId & '/' & $videoId & '/hls/' %}",
                   "SegmentLength": 4,
                   "MinSegmentLength": 0
                 }
               },
               "Outputs": [
                 {
-                  "Preset": "System-Avc_16x9_720p_29_97fps_8Mbps"
+                  "ContainerSettings": {
+                    "Container": "M3U8",
+                    "M3u8Settings": {}
+                  },
+                  "VideoDescription": {
+                    "CodecSettings": {
+                      "Codec": "H_264",
+                      "H264Settings": {
+                        "RateControlMode": "QVBR",
+                        "MaxBitrate": 5000000,
+                        "QvbrSettings": {
+                          "QvbrQualityLevel": 7
+                        }
+                      }
+                    }
+                  },
+                  "AudioDescriptions": [
+                    {
+                      "CodecSettings": {
+                        "Codec": "AAC",
+                        "AacSettings": {
+                          "Bitrate": 96000,
+                          "CodingMode": "CODING_MODE_2_0",
+                          "SampleRate": 48000
+                        }
+                      }
+                    }
+                  ],
+                  "NameModifier": "_720p"
                 }
               ]
             }
           ]
         }
       },
-      "ResultPath": "$.createJob",
+      "Assign": {
+        "createJobResult": "{% $states.result %}"
+      },
       "Catch": [
         {
-          "ErrorEquals": ["States.ALL"],
+          "ErrorEquals": [
+            "States.ALL"
+          ],
           "Next": "MarkFailed"
         }
       ],
@@ -68,42 +100,54 @@
     "MarkReady": {
       "Type": "Task",
       "Resource": "arn:aws:states:::dynamodb:updateItem",
-      "Parameters": {
-        "TableName.$": "$.videosTable",
+      "Arguments": {
+        "TableName": "{% $videosTable %}",
         "Key": {
-          "user_id": { "S.$": "$.userId" },
-          "id": { "S.$": "$.videoId" }
+          "user_id": {
+            "S": "{% $userId %}"
+          },
+          "id": {
+            "S": "{% $videoId %}"
+          }
         },
         "UpdateExpression": "SET #status = :ready, s3_key_hls = :hls",
         "ExpressionAttributeNames": {
           "#status": "status"
         },
         "ExpressionAttributeValues": {
-          ":ready": { "S": "ready" },
-          ":hls": { "S.$": "States.Format('{}/{}/hls/playlist.m3u8', $.userId, $.videoId)" }
+          ":ready": {
+            "S": "ready"
+          },
+          ":hls": {
+            "S": "{% $userId & '/' & $videoId & '/hls/' & $substringBefore($split($key, '/')[3], '.') & '.m3u8' %}"
+          }
         }
       },
-      "ResultPath": "$.dynamodb",
       "End": true
     },
     "MarkFailed": {
       "Type": "Task",
       "Resource": "arn:aws:states:::dynamodb:updateItem",
-      "Parameters": {
-        "TableName.$": "$.videosTable",
+      "Arguments": {
+        "TableName": "{% $videosTable %}",
         "Key": {
-          "user_id": { "S.$": "$.userId" },
-          "id": { "S.$": "$.videoId" }
+          "user_id": {
+            "S": "{% $userId %}"
+          },
+          "id": {
+            "S": "{% $videoId %}"
+          }
         },
         "UpdateExpression": "SET #status = :failed",
         "ExpressionAttributeNames": {
           "#status": "status"
         },
         "ExpressionAttributeValues": {
-          ":failed": { "S": "failed" }
+          ":failed": {
+            "S": "failed"
+          }
         }
       },
-      "ResultPath": "$.dynamodb",
       "End": true
     }
   }

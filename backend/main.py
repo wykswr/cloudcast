@@ -3,14 +3,10 @@ from functools import lru_cache
 from app.auth import AuthenticatedUser, get_current_user
 from app.aws import get_dynamodb_resource, get_s3_client
 from app.config import get_settings
-from app.services.cloudfront import CloudFrontURLSigner
-from app.services.uploads import UploadService
-from app.services.videos import VideoRepository, VideoService
-from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
-
-from backend.app.schemas import (
+from app.schemas import (
     CompleteUploadRequest,
     CompleteUploadResponse,
+    DeleteVideoResponse,
     SignPartRequest,
     SignPartResponse,
     StreamResponse,
@@ -19,10 +15,22 @@ from backend.app.schemas import (
     VideoListItem,
     VideoListResponse,
 )
+from app.services.cloudfront import CloudFrontURLSigner
+from app.services.uploads import UploadService
+from app.services.videos import VideoRepository, VideoService
+from fastapi import APIRouter, Depends, FastAPI, HTTPException, status
+from fastapi.middleware.cors import CORSMiddleware
 
 settings = get_settings()
 
 app = FastAPI(title="CloudCast API", version="0.1.0")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 router = APIRouter(prefix="/videos", tags=["videos"])
 
 
@@ -38,7 +46,7 @@ def get_upload_service() -> UploadService:
 
 @lru_cache
 def get_video_service() -> VideoService:
-    return VideoService(get_video_repository(), settings)
+    return VideoService(get_video_repository(), settings, get_s3_client())
 
 
 @lru_cache
@@ -93,6 +101,16 @@ def list_videos(
 ) -> VideoListResponse:
     items = service.list_user_videos(user)
     return VideoListResponse(items=[VideoListItem(**item) for item in items])
+
+
+@router.delete("/{video_id}", response_model=DeleteVideoResponse)
+def delete_video(
+    video_id: str,
+    user: AuthenticatedUser = Depends(get_current_user),
+    service: VideoService = Depends(get_video_service),
+) -> DeleteVideoResponse:
+    service.delete_video(user, video_id)
+    return DeleteVideoResponse(status="deleted")
 
 
 @router.get("/{video_id}/stream", response_model=StreamResponse)
