@@ -77,7 +77,7 @@ function UploadForm({
           <div
             className={`h-full rounded-full transition-all ${uploadState.stage === 'error'
               ? 'bg-rose-400'
-              : 'bg-gradient-to-r from-sky-400 to-cyan-300'
+              : 'bg-linear-to-r from-sky-400 to-cyan-300'
               }`}
             style={{ width: `${uploadState.percent}%` }}
           />
@@ -87,7 +87,7 @@ function UploadForm({
           <button
             type="submit"
             disabled={uploadState.stage === 'uploading'}
-            className="rounded-xl bg-gradient-to-r from-sky-500 to-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:from-sky-400 hover:to-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
+            className="rounded-xl bg-linear-to-r from-sky-500 to-cyan-400 px-4 py-2 text-sm font-semibold text-slate-950 transition hover:from-sky-400 hover:to-cyan-300 disabled:cursor-not-allowed disabled:opacity-60"
           >
             {uploadState.stage === 'uploading' ? 'Uploading...' : 'Start upload'}
           </button>

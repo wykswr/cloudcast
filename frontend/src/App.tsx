@@ -246,7 +246,7 @@ function App() {
         : handleConfirm
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-sky-950 text-white">
+    <div className="min-h-screen bg-linear-to-br from-slate-950 via-slate-900 to-sky-950 text-white">
       <div className="mx-auto max-w-6xl px-6 py-10">
         <header className="mb-10 flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
           <div>
