@@ -1,14 +1,10 @@
-from functools import lru_cache
-
 import boto3
 from botocore.client import Config as BotoConfig
 
-from .config import get_settings
+from .config import Settings
 
 
-@lru_cache
-def get_s3_client():
-    settings = get_settings()
+def create_s3_client(settings: Settings):
     endpoint = settings.s3_endpoint_url or f"https://s3.{settings.aws_region}.amazonaws.com"
     return boto3.client(
         "s3",
@@ -21,9 +17,7 @@ def get_s3_client():
     )
 
 
-@lru_cache
-def get_dynamodb_resource():
-    settings = get_settings()
+def create_dynamodb_resource(settings: Settings):
     endpoint = settings.dynamodb_endpoint_url or None
     kwargs = {"region_name": settings.aws_region}
     if endpoint:

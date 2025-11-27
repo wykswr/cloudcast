@@ -1,7 +1,6 @@
 import json
 import time
 import urllib.request
-from functools import lru_cache
 from typing import Any
 
 from fastapi import Depends, HTTPException, status
@@ -9,7 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
 from pydantic import BaseModel
 
-from .config import get_settings
+from .container import AppContainer, get_app_container
 
 
 http_bearer = HTTPBearer(auto_error=False)
@@ -98,19 +97,15 @@ class CognitoTokenVerifier:
         return claims
 
 
-@lru_cache
-def get_token_verifier() -> CognitoTokenVerifier:
-    settings = get_settings()
-    return CognitoTokenVerifier(
-        region=settings.cognito_region,
-        user_pool_id=settings.cognito_user_pool_id,
-        client_id=settings.cognito_client_id,
-        ttl_seconds=settings.jwks_cache_seconds,
-    )
+def get_token_verifier(
+    container: AppContainer = Depends(get_app_container),
+) -> CognitoTokenVerifier:
+    return container.token_verifier
 
 
 async def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
+    token_verifier: CognitoTokenVerifier = Depends(get_token_verifier),
 ) -> AuthenticatedUser:
     if credentials is None:
         raise HTTPException(
@@ -118,5 +113,5 @@ async def get_current_user(
             detail="Missing Authorization header",
         )
 
-    claims = get_token_verifier().verify(credentials.credentials)
+    claims = token_verifier.verify(credentials.credentials)
     return AuthenticatedUser(id=claims["sub"], email=claims.get("email"))
