@@ -54,13 +54,15 @@
                     "M3u8Settings": {}
                   },
                   "VideoDescription": {
+                    "Width": 1920,
+                    "Height": 1080,
                     "CodecSettings": {
                       "Codec": "H_264",
                       "H264Settings": {
                         "RateControlMode": "QVBR",
-                        "MaxBitrate": 5000000,
+                        "MaxBitrate": 8000000,
                         "QvbrSettings": {
-                          "QvbrQualityLevel": 7
+                          "QvbrQualityLevel": 8
                         }
                       }
                     }
@@ -70,14 +72,14 @@
                       "CodecSettings": {
                         "Codec": "AAC",
                         "AacSettings": {
-                          "Bitrate": 96000,
+                          "Bitrate": 128000,
                           "CodingMode": "CODING_MODE_2_0",
                           "SampleRate": 48000
                         }
                       }
                     }
                   ],
-                  "NameModifier": "_720p"
+                  "NameModifier": "_1080p"
                 }
               ]
             }

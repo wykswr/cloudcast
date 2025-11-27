@@ -162,7 +162,6 @@ Resources:
               Action:
                 - mediaconvert:CreateJob
                 - mediaconvert:GetJob
-                - mediaconvert:DescribeEndpoints
               Resource: "*"
             - Effect: Allow
               Action:
