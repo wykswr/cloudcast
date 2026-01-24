@@ -1,0 +1,11 @@
+version = 0.1
+
+[default.deploy.parameters]
+stack_name = "cloudcast"
+resolve_s3 = true
+s3_prefix = "cloudcast"
+region = "us-west-2"
+profile = "personal"
+capabilities = "CAPABILITY_IAM"
+parameter_overrides = "Env=\"dev\""
+image_repositories = []

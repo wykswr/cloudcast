@@ -242,7 +242,9 @@ cloudcast/
 │
 ├── backend/               # FastAPI application
 │   ├── main.py           # App entry point, route definitions
+│   ├── lambda_handler.py # Lambda entry point (Mangum adapter)
 │   ├── pyproject.toml    # Python dependencies (uv/pip)
+│   ├── requirements.txt  # SAM build dependencies
 │   └── app/
 │       ├── auth.py       # Cognito JWT verification
 │       ├── aws.py        # boto3 client factories
@@ -262,8 +264,10 @@ cloudcast/
 │       ├── App.tsx       # Main component (auth, upload, player)
 │       └── index.css     # Tailwind CSS entry
 │
-└── tasks/                 # AWS SAM infrastructure
-    ├── template.yaml     # CloudFormation/SAM template
+├── template.yaml          # CloudCast SAM full-stack template
+├── samconfig.toml         # SAM deployment configuration
+├── deploy_frontend.sh     # Helper to publish frontend to S3/CloudFront
+└── tasks/                 # Supporting assets for SAM
     ├── workflow.asl.json # Step Functions definition (ASL + JSONata)
     └── samconfig.toml    # SAM deployment configuration
 ```
@@ -276,6 +280,7 @@ cloudcast/
 
 ```
 http://localhost:8000  (development)
+https://{api-id}.execute-api.{region}.amazonaws.com/{env}/  (SAM)
 ```
 
 ### Authentication

@@ -1,7 +1,7 @@
 import json
 import time
 import urllib.request
-from typing import Any
+from typing import Annotated, Any
 
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -10,13 +10,13 @@ from pydantic import BaseModel
 
 from .container import AppContainer, get_app_container
 
-
 http_bearer = HTTPBearer(auto_error=False)
 
 
 class AuthenticatedUser(BaseModel):
     id: str
     email: str | None = None
+    groups: list[str] = []
 
 
 class JWKSCache:
@@ -46,14 +46,14 @@ class JWKSCache:
 
 
 class CognitoTokenVerifier:
-    def __init__(self, region: str, user_pool_id: str, client_id: str, ttl_seconds: int):
+    def __init__(
+        self, region: str, user_pool_id: str, client_id: str, ttl_seconds: int
+    ):
         self.region = region
         self.user_pool_id = user_pool_id
         self.client_id = client_id
         self.issuer = f"https://cognito-idp.{region}.amazonaws.com/{user_pool_id}"
-        self.jwks_cache = JWKSCache(
-            f"{self.issuer}/.well-known/jwks.json", ttl_seconds
-        )
+        self.jwks_cache = JWKSCache(f"{self.issuer}/.well-known/jwks.json", ttl_seconds)
 
     def verify(self, token: str) -> dict[str, Any]:
         keys = self.jwks_cache.get_keys()
@@ -103,7 +103,7 @@ def get_token_verifier(
     return container.token_verifier
 
 
-async def get_current_user(
+def get_current_user(
     credentials: HTTPAuthorizationCredentials | None = Depends(http_bearer),
     token_verifier: CognitoTokenVerifier = Depends(get_token_verifier),
 ) -> AuthenticatedUser:
@@ -114,4 +114,23 @@ async def get_current_user(
         )
 
     claims = token_verifier.verify(credentials.credentials)
-    return AuthenticatedUser(id=claims["sub"], email=claims.get("email"))
+    return AuthenticatedUser(
+        id=claims["sub"],
+        email=claims.get("email"),
+        groups=claims.get("cognito:groups", []),
+    )
+
+
+UserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
+
+
+def get_admin_user(user: UserDep) -> AuthenticatedUser:
+    if "admin" not in user.groups:
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="Admin privileges required",
+        )
+    return user
+
+
+AdminUserDep = Annotated[AuthenticatedUser, Depends(get_admin_user)]

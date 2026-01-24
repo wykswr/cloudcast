@@ -1,9 +1,7 @@
-from typing import Annotated
-
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, HTTPException, status
 
 from app.api.dependencies import StreamSignerDep, UploadServiceDep, VideoServiceDep
-from app.auth import AuthenticatedUser, get_current_user
+from app.auth import AdminUserDep, UserDep
 from app.schemas import (
     CompleteUploadRequest,
     CompleteUploadResponse,
@@ -18,13 +16,12 @@ from app.schemas import (
 )
 
 router = APIRouter(prefix="/videos", tags=["videos"])
-UserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
 
 
 @router.post("/upload/init", response_model=UploadInitResponse)
 def initiate_upload(
     payload: UploadInitRequest,
-    user: UserDep,
+    user: AdminUserDep,
     service: UploadServiceDep,
 ) -> UploadInitResponse:
     upload_id, video_id = service.initiate_upload(user, payload)
@@ -34,7 +31,7 @@ def initiate_upload(
 @router.post("/upload/sign-part", response_model=SignPartResponse)
 def sign_upload_part(
     payload: SignPartRequest,
-    user: UserDep,
+    user: AdminUserDep,
     service: UploadServiceDep,
 ) -> SignPartResponse:
     presigned_url = service.presign_part(
@@ -49,7 +46,7 @@ def sign_upload_part(
 @router.post("/upload/complete", response_model=CompleteUploadResponse)
 def complete_upload(
     payload: CompleteUploadRequest,
-    user: UserDep,
+    user: AdminUserDep,
     service: UploadServiceDep,
 ) -> CompleteUploadResponse:
     service.complete_upload(
@@ -73,7 +70,7 @@ def list_videos(
 @router.delete("/{video_id}", response_model=DeleteVideoResponse)
 def delete_video(
     video_id: str,
-    user: UserDep,
+    user: AdminUserDep,
     service: VideoServiceDep,
 ) -> DeleteVideoResponse:
     service.delete_video(user, video_id)
@@ -83,7 +80,7 @@ def delete_video(
 @router.get("/{video_id}/stream", response_model=StreamResponse)
 def get_stream_url(
     video_id: str,
-    user: UserDep,
+    user: AdminUserDep,
     service: VideoServiceDep,
     signer: StreamSignerDep,
 ) -> StreamResponse:

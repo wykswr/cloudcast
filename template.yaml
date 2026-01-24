@@ -1,0 +1,456 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Transform: AWS::Serverless-2016-10-31
+Description: CloudCast full-stack serverless application
+
+Parameters:
+  Env:
+    Type: String
+    Default: dev
+    AllowedValues:
+      - dev
+      - prod
+  CorsAllowOrigin:
+    Type: String
+    Default: http://localhost:5173
+  CloudFrontPublicKeySsmName:
+    Type: String
+    Default: /cloudcast/dev/cloudfront-public-key
+  CloudFrontPrivateKeySsmName:
+    Type: String
+    Default: /cloudcast/dev/cloudfront-private-key
+
+Globals:
+  Function:
+    Runtime: python3.11
+    Architectures:
+      - x86_64
+    MemorySize: 512
+    Timeout: 30
+    LoggingConfig:
+      LogFormat: JSON
+
+Resources:
+  ApiGatewayApi:
+    Type: AWS::Serverless::Api
+    Properties:
+      StageName: !Ref Env
+      Auth:
+            DefaultAuthorizer: CognitoAuthorizer
+            AddDefaultAuthorizerToCorsPreflight: false
+            Authorizers:
+              CognitoAuthorizer:
+                UserPoolArn: !GetAtt UserPool.Arn
+                Identity:
+                  Header: Authorization
+      Cors:
+        AllowMethods: "'OPTIONS, GET, POST, DELETE'"
+        AllowHeaders: "'Content-Type,Authorization'"
+        AllowOrigin: !Sub "'https://${FrontendCloudFrontDistribution.DomainName}'"
+
+  BackendFunction:
+    Type: AWS::Serverless::Function
+    Properties:
+      CodeUri: backend/
+      Handler: lambda_handler.handler
+      Description: CloudCast API powered by FastAPI
+      Policies:
+        - DynamoDBCrudPolicy:
+            TableName: !Ref VideosTable
+        - DynamoDBCrudPolicy:
+            TableName: !Ref UsersTable
+        - S3CrudPolicy:
+            BucketName: !Ref RawUploadsBucket
+        - S3CrudPolicy:
+            BucketName: !Ref ProcessedVideosBucket
+        - Statement:
+            - Effect: Allow
+              Action:
+                - ssm:GetParameter
+              Resource: !Sub "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:parameter${CloudFrontPrivateKeySsmName}"
+      Environment:
+        Variables:
+          RAW_UPLOADS_BUCKET: !Ref RawUploadsBucket
+          PROCESSED_VIDEOS_BUCKET: !Ref ProcessedVideosBucket
+          VIDEOS_TABLE: !Ref VideosTable
+          USERS_TABLE: !Ref UsersTable
+          VIDEO_ID_INDEX: VideoIdIndex
+          COGNITO_USER_POOL_ID: !Ref UserPool
+          COGNITO_CLIENT_ID: !Ref UserPoolClient
+          CLOUDFRONT_DOMAIN: !GetAtt MediaCloudFrontDistribution.DomainName
+          CLOUDFRONT_KEY_ID: !GetAtt MediaCloudFrontPublicKey.Id
+          CLOUDFRONT_PRIVATE_KEY_SSM_NAME: !Ref CloudFrontPrivateKeySsmName
+          CORS_ALLOW_ORIGINS: !Sub "https://${FrontendCloudFrontDistribution.DomainName}"
+      Events:
+        Root:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /
+            Method: ANY
+        Proxy:
+          Type: Api
+          Properties:
+            RestApiId: !Ref ApiGatewayApi
+            Path: /{proxy+}
+            Method: ANY
+
+  UserPool:
+    Type: AWS::Cognito::UserPool
+    Properties:
+      UserPoolName: !Sub "CloudCast-Users-${Env}"
+      AutoVerifiedAttributes:
+        - email
+      Policies:
+        PasswordPolicy:
+          MinimumLength: 8
+      Schema:
+        - Name: email
+          AttributeDataType: String
+          Mutable: false
+          Required: true
+
+  UserPoolClient:
+    Type: AWS::Cognito::UserPoolClient
+    Properties:
+      ClientName: !Sub "CloudCast-WebClient-${Env}"
+      UserPoolId: !Ref UserPool
+      GenerateSecret: false
+      ExplicitAuthFlows:
+        - ALLOW_USER_PASSWORD_AUTH
+        - ALLOW_REFRESH_TOKEN_AUTH
+        - ALLOW_USER_SRP_AUTH
+
+  RawUploadsBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "cloudcast-raw-${Env}"
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ["*"]
+            AllowedMethods: ["PUT", "POST", "GET", "HEAD"]
+            AllowedOrigins:
+              - !Ref CorsAllowOrigin
+              - !Sub "https://${FrontendCloudFrontDistribution.DomainName}"
+            ExposedHeaders: ["ETag"]
+            MaxAge: 3000
+      NotificationConfiguration:
+        EventBridgeConfiguration:
+          EventBridgeEnabled: true
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  ProcessedVideosBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Sub "cloudcast-processed-${Env}"
+      CorsConfiguration:
+        CorsRules:
+          - AllowedHeaders: ["*"]
+            AllowedMethods: ["HEAD", "GET", "POST"]
+            AllowedOrigins: ["*"]
+      OwnershipControls:
+        Rules:
+          - ObjectOwnership: BucketOwnerEnforced
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  UsersTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "CloudCast-Users-${Env}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+
+  VideosTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      TableName: !Sub "CloudCast-Videos-${Env}"
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: user_id
+          AttributeType: S
+        - AttributeName: id
+          AttributeType: S
+      KeySchema:
+        - AttributeName: user_id
+          KeyType: HASH
+        - AttributeName: id
+          KeyType: RANGE
+      GlobalSecondaryIndexes:
+        - IndexName: VideoIdIndex
+          Projection:
+            ProjectionType: ALL
+          KeySchema:
+            - AttributeName: id
+              KeyType: HASH
+
+  MediaConvertRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: mediaconvert.amazonaws.com
+            Action: sts:AssumeRole
+      Policies:
+        - PolicyName: MediaConvertS3Access
+          PolicyDocument:
+            Version: '2012-10-17'
+            Statement:
+              - Effect: Allow
+                Action:
+                  - s3:GetObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt RawUploadsBucket.Arn
+                  - !Sub "${RawUploadsBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - s3:PutObject
+                  - s3:ListBucket
+                Resource:
+                  - !GetAtt ProcessedVideosBucket.Arn
+                  - !Sub "${ProcessedVideosBucket.Arn}/*"
+              - Effect: Allow
+                Action:
+                  - logs:CreateLogGroup
+                  - logs:CreateLogStream
+                  - logs:PutLogEvents
+                Resource: "*"
+
+  ProcessingStateMachine:
+    Type: AWS::Serverless::StateMachine
+    Properties:
+      Name: !Sub "CloudCast-Processor-${Env}"
+      DefinitionUri: tasks/workflow.asl.json
+      DefinitionSubstitutions:
+        RawBucketName: !Ref RawUploadsBucket
+        ProcessedBucketName: !Ref ProcessedVideosBucket
+        VideosTableName: !Ref VideosTable
+        MediaConvertRoleArn: !GetAtt MediaConvertRole.Arn
+      Policies:
+        - Statement:
+            - Effect: Allow
+              Action:
+                - mediaconvert:CreateJob
+                - mediaconvert:GetJob
+              Resource: "*"
+            - Effect: Allow
+              Action:
+                - iam:PassRole
+              Resource:
+                - !GetAtt MediaConvertRole.Arn
+            - Effect: Allow
+              Action:
+                - dynamodb:UpdateItem
+              Resource:
+                - !GetAtt VideosTable.Arn
+            - Effect: Allow
+              Action:
+                - events:PutRule
+                - events:PutTargets
+                - events:DescribeRule
+                - events:DeleteRule
+                - events:RemoveTargets
+              Resource: "*"
+        - EventBridgePutEventsPolicy:
+            EventBusName: default
+      Events:
+        S3UploadEvent:
+          Type: EventBridgeRule
+          Properties:
+            Pattern:
+              source:
+                - aws.s3
+              detail-type:
+                - Object Created
+              detail:
+                bucket:
+                  name:
+                    - !Ref RawUploadsBucket
+
+  MediaCloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Description: !Sub "OAC for CloudCast processed videos ${Env}"
+        Name: !Sub "cloudcast-oac-${Env}"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  MediaCloudFrontPublicKey:
+    Type: AWS::CloudFront::PublicKey
+    Properties:
+      PublicKeyConfig:
+        CallerReference: !Sub "${AWS::StackName}-${Env}-cloudcast-pubkey"
+        Name: !Sub "cloudcast-pubkey-${Env}"
+        EncodedKey: !Sub "{{resolve:ssm:${CloudFrontPublicKeySsmName}}}"
+
+  MediaCloudFrontKeyGroup:
+    Type: AWS::CloudFront::KeyGroup
+    Properties:
+      KeyGroupConfig:
+        Name: !Sub "cloudcast-keygroup-${Env}"
+        Items:
+          - !GetAtt MediaCloudFrontPublicKey.Id
+
+  ProcessedBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref ProcessedVideosBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action:
+              - s3:GetObject
+            Resource: !Sub "${ProcessedVideosBucket.Arn}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${MediaCloudFrontDistribution}"
+
+  MediaCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Enabled: true
+        HttpVersion: http2
+        Origins:
+          - Id: ProcessedVideosOrigin
+            DomainName: !GetAtt ProcessedVideosBucket.RegionalDomainName
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+            OriginAccessControlId: !Ref MediaCloudFrontOAC
+        DefaultCacheBehavior:
+          TargetOriginId: ProcessedVideosOrigin
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+          CachedMethods:
+            - GET
+            - HEAD
+          Compress: true
+          ForwardedValues:
+            QueryString: false
+          TrustedKeyGroups:
+            - !Ref MediaCloudFrontKeyGroup
+        PriceClass: PriceClass_100
+
+  FrontendBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketEncryption:
+        ServerSideEncryptionConfiguration:
+          - BucketKeyEnabled: true
+      VersioningConfiguration:
+        Status: Enabled
+
+  FrontendBucketPolicy:
+    Type: AWS::S3::BucketPolicy
+    Properties:
+      Bucket: !Ref FrontendBucket
+      PolicyDocument:
+        Version: '2012-10-17'
+        Id: PolicyForCloudFrontPrivateContent
+        Statement:
+          - Sid: AllowCloudFrontServicePrincipal
+            Effect: Allow
+            Principal:
+              Service: cloudfront.amazonaws.com
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${FrontendBucket}/*"
+            Condition:
+              StringEquals:
+                AWS:SourceArn: !Sub "arn:aws:cloudfront::${AWS::AccountId}:distribution/${FrontendCloudFrontDistribution}"
+
+  FrontendCloudFrontOAC:
+    Type: AWS::CloudFront::OriginAccessControl
+    Properties:
+      OriginAccessControlConfig:
+        Name: !Sub "${FrontendBucket} OAC"
+        OriginAccessControlOriginType: s3
+        SigningBehavior: always
+        SigningProtocol: sigv4
+
+  FrontendCloudFrontDistribution:
+    Type: AWS::CloudFront::Distribution
+    Properties:
+      DistributionConfig:
+        Origins:
+          - DomainName: !GetAtt FrontendBucket.RegionalDomainName
+            Id: frontendS3Origin
+            OriginAccessControlId: !GetAtt FrontendCloudFrontOAC.Id
+            S3OriginConfig:
+              OriginAccessIdentity: ""
+        Enabled: true
+        DefaultRootObject: index.html
+        HttpVersion: http2
+        DefaultCacheBehavior:
+          AllowedMethods:
+            - GET
+            - HEAD
+            - OPTIONS
+          CachedMethods:
+            - GET
+            - HEAD
+          TargetOriginId: frontendS3Origin
+          ForwardedValues:
+            QueryString: false
+            Cookies:
+              Forward: none
+          ViewerProtocolPolicy: redirect-to-https
+          MinTTL: 0
+          DefaultTTL: 3600
+          MaxTTL: 86400
+        PriceClass: PriceClass_100
+
+Outputs:
+  APIGatewayEndpoint:
+    Description: API Gateway endpoint URL
+    Value: !Sub "https://${ApiGatewayApi}.execute-api.${AWS::Region}.${AWS::URLSuffix}/${Env}/"
+  FrontendCloudFrontDistributionId:
+    Description: CloudFront Distribution ID for hosting web front end
+    Value: !Ref FrontendCloudFrontDistribution
+  FrontendCloudFrontDistributionDomainName:
+    Description: CloudFront Distribution Domain Name for accessing web front end
+    Value: !GetAtt FrontendCloudFrontDistribution.DomainName
+  FrontendBucketName:
+    Description: S3 Bucket for hosting web frontend
+    Value: !Ref FrontendBucket
+  UserPoolId:
+    Value: !Ref UserPool
+  UserPoolClientId:
+    Value: !Ref UserPoolClient
+  RawBucketName:
+    Value: !Ref RawUploadsBucket
+  ProcessedBucketName:
+    Value: !Ref ProcessedVideosBucket
+  VideosTableName:
+    Value: !Ref VideosTable
+  UsersTableName:
+    Value: !Ref UsersTable
+  VideoIdIndex:
+    Value: VideoIdIndex
+  ProcessingStateMachineArn:
+    Value: !Ref ProcessingStateMachine
+  MediaCloudFrontDomain:
+    Value: !GetAtt MediaCloudFrontDistribution.DomainName
+  MediaCloudFrontKeyId:
+    Value: !GetAtt MediaCloudFrontPublicKey.Id
