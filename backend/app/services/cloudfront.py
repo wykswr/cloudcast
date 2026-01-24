@@ -1,6 +1,6 @@
 from datetime import datetime, timedelta, timezone
-from pathlib import Path
 
+import boto3
 from botocore.signers import CloudFrontSigner
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import padding
@@ -13,25 +13,25 @@ class CloudFrontURLSigner:
         self.settings = settings
         self._private_key = self._load_private_key()
         self._signer = CloudFrontSigner(
-            settings.cloudfront_key_id, self._rsa_signer  # type: ignore[arg-type]
+            settings.cloudfront_key_id,
+            self._rsa_signer,  # type: ignore[arg-type]
         )
 
     def _load_private_key(self):
+        ssm = boto3.client("ssm", region_name=self.settings.aws_region)
+        name = self.settings.cloudfront_private_key_ssm_name
+        cloudfront_private_key = ssm.get_parameter(Name=name, WithDecryption=True)[
+            "Parameter"
+        ]["Value"]
         key_data: bytes | None = None
-        if self.settings.cloudfront_private_key_path:
-            key_data = Path(self.settings.cloudfront_private_key_path).read_bytes()
-        elif self.settings.cloudfront_private_key:
-            # Ignore the placeholder value that ships in the sample .env
-            placeholder = "REPLACE_ME"
-            if placeholder not in self.settings.cloudfront_private_key:
-                normalized = self.settings.cloudfront_private_key.replace("\\n", "\n")
-                key_data = normalized.encode("utf-8")
+        normalized = cloudfront_private_key.replace("\\n", "\n")
+        key_data = normalized.encode("utf-8")
 
         if not key_data:
             raise ValueError(
                 "CloudFront private key is not configured via path or inline value."
             )
-
+        ssm.close()
         return serialization.load_pem_private_key(key_data, password=None)
 
     def _rsa_signer(self, message: bytes) -> bytes:

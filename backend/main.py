@@ -1,8 +1,5 @@
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
-
 from app.api import get_api_router
 from app.auth import CognitoTokenVerifier
 from app.aws import create_dynamodb_resource, create_s3_client
@@ -11,6 +8,8 @@ from app.container import AppContainer
 from app.services.cloudfront import CloudFrontURLSigner
 from app.services.uploads import UploadService
 from app.services.videos import VideoRepository, VideoService
+from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 
 settings = get_settings()
 
@@ -25,7 +24,7 @@ def create_app() -> FastAPI:
         video_service = VideoService(video_repository, settings, s3_client)
         stream_signer = CloudFrontURLSigner(settings)
         token_verifier = CognitoTokenVerifier(
-            region=settings.cognito_region,
+            region=settings.aws_region,
             user_pool_id=settings.cognito_user_pool_id,
             client_id=settings.cognito_client_id,
             ttl_seconds=settings.jwks_cache_seconds,
@@ -49,7 +48,9 @@ def create_app() -> FastAPI:
             if callable(close_s3):
                 close_s3()
 
-            dynamodb_client = getattr(getattr(dynamodb_resource, "meta", None), "client", None)
+            dynamodb_client = getattr(
+                getattr(dynamodb_resource, "meta", None), "client", None
+            )
             close_dynamodb = getattr(dynamodb_client, "close", None)
             if callable(close_dynamodb):
                 close_dynamodb()

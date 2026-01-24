@@ -15,16 +15,12 @@ class Settings(BaseSettings):
 
     cloudfront_domain: str = Field(..., alias="CLOUDFRONT_DOMAIN")
     cloudfront_key_id: str = Field(..., alias="CLOUDFRONT_KEY_ID")
-    cloudfront_private_key_path: str | None = Field(
-        default=None, alias="CLOUDFRONT_PRIVATE_KEY_PATH"
-    )
-    cloudfront_private_key: str | None = Field(
-        default=None, alias="CLOUDFRONT_PRIVATE_KEY"
+    cloudfront_private_key_ssm_name: str = Field(
+        ..., alias="CLOUDFRONT_PRIVATE_KEY_SSM_NAME"
     )
 
     cognito_user_pool_id: str = Field(..., alias="COGNITO_USER_POOL_ID")
     cognito_client_id: str = Field(..., alias="COGNITO_CLIENT_ID")
-    cognito_region: str = Field(..., alias="COGNITO_REGION")
     jwks_cache_seconds: int = Field(default=3600)
 
     multipart_url_expiration_seconds: int = Field(default=3600)
