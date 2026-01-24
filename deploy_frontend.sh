@@ -19,6 +19,7 @@ echo "Cognito User Pool Client Id: $user_pool_client_id"
 cd frontend/
 npm install
 
+touch .env.production
 cat > .env.production <<EOF
 VITE_API_BASE_URL=$api_gateway_endpoint
 VITE_COGNITO_USER_POOL_ID=$user_pool_id

@@ -203,7 +203,7 @@ S3 Raw Bucket                    EventBridge                   Step Functions
 
 - **Input:** Original video from raw bucket
 - **Output:** HLS playlist (`.m3u8`) + segments (`.ts`) to processed bucket
-- **Settings:** H.264 video codec, AAC audio, 720p @ QVBR quality level 7
+- **Settings:** H.264 video codec, AAC audio, 1080p @ QVBR quality level 7
 
 ### 3. Playback Flow (Secure Streaming)
 

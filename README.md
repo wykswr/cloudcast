@@ -27,8 +27,8 @@ CloudCast is a full-stack, AWS-backed video hosting PoC: users authenticate with
 ```bash
 cd backend
 cp .env.example .env
-uv pip install -e .
-uvicorn main:app --reload
+uv sync
+uv uvicorn main:app --reload
 ```
 
 The backend reads configuration from environment variables (see `backend/app/config.py`) and supports optional `DYNAMODB_ENDPOINT_URL` / `S3_ENDPOINT_URL` for local emulators.
@@ -37,7 +37,7 @@ The backend reads configuration from environment variables (see `backend/app/con
 
 ```bash
 cd frontend
-cp .env.example .env.local
+cp .env.example .env
 pnpm install
 pnpm dev
 ```
