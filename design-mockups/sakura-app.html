@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CloudCast · Sakura app mockup</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --pink:#ff8fb1;--pink-deep:#ff5d8f;--lav:#a78bfa;--sky:#7dd3fc;
+    --cream:#fff5f7;--ink:#5b4a63;--ink-soft:#8b7a93;--card:#fff;
+    --ready:#34d399;--proc:#fbbf24;--fail:#fb7185;
+    --side:#fff;--app-bg:#fbf3f8;
+  }
+  *{box-sizing:border-box}html,body{margin:0;height:100%}
+  body{font-family:'M PLUS Rounded 1c',sans-serif;color:var(--ink);background:var(--app-bg)}
+  h1,h2,h3,h4,.disp{font-family:'Baloo 2'}
+  button{font-family:inherit;cursor:pointer}
+  .app{display:grid;grid-template-columns:248px 1fr;height:100vh;overflow:hidden}
+
+  /* ---------- Sidebar ---------- */
+  .side{background:var(--side);border-right:1px solid #ffe3ee;padding:22px 16px;display:flex;flex-direction:column;gap:6px}
+  .brand{display:flex;align-items:center;gap:11px;padding:4px 8px 18px}
+  .logo{width:44px;height:44px;border-radius:14px;display:grid;place-items:center;font-size:23px;
+    background:linear-gradient(150deg,var(--pink),var(--lav));box-shadow:0 8px 18px rgba(255,93,143,.35)}
+  .brand b{font-family:'Baloo 2';font-size:19px;font-weight:800;
+    background:linear-gradient(90deg,var(--pink-deep),var(--lav));-webkit-background-clip:text;background-clip:text;color:transparent}
+  .brand small{display:block;font-size:10px;color:var(--ink-soft);font-weight:500}
+  .navlabel{font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:#cbb6c9;font-weight:700;margin:14px 8px 4px}
+  .nav{display:flex;align-items:center;gap:11px;padding:11px 12px;border-radius:14px;color:var(--ink-soft);font-weight:700;font-size:14px;border:none;background:transparent;width:100%;text-align:left}
+  .nav .ic{font-size:17px;width:20px;text-align:center}
+  .nav:hover{background:#fff3f8;color:var(--ink)}
+  .nav.on{background:linear-gradient(120deg,#ffe0ec,#efe3ff);color:var(--pink-deep)}
+  .nav .count{margin-left:auto;font-size:11px;background:#fff;border-radius:999px;padding:2px 8px;color:var(--ink-soft);box-shadow:0 2px 6px rgba(167,139,250,.18)}
+  .storage{margin-top:auto;background:linear-gradient(160deg,#fff0f6,#f1e9ff);border-radius:18px;padding:14px}
+  .storage .row{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-soft);margin-bottom:8px}
+  .meter{height:9px;border-radius:999px;background:#ffe1ea;overflow:hidden}
+  .meter span{display:block;height:100%;width:43%;border-radius:999px;background:linear-gradient(90deg,var(--pink),var(--lav))}
+  .storage small{display:block;margin-top:8px;font-size:11px;color:var(--ink-soft)}
+  .userbox{display:flex;align-items:center;gap:10px;margin-top:12px;padding:8px;border-radius:14px}
+  .ava{width:34px;height:34px;border-radius:50%;background:linear-gradient(150deg,var(--sky),var(--lav));display:grid;place-items:center;font-size:16px}
+  .userbox b{font-size:13px}.userbox small{display:block;font-size:11px;color:var(--ink-soft)}
+
+  /* ---------- Main ---------- */
+  .main{overflow-y:auto;position:relative}
+  .topbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;gap:16px;padding:18px 28px;
+    background:rgba(251,243,248,.85);backdrop-filter:blur(8px);border-bottom:1px solid #ffe3ee}
+  .crumb{font-size:13px;color:var(--ink-soft)}
+  .crumb b{color:var(--ink);font-family:'Baloo 2';font-size:20px;display:block}
+  .search{flex:1;max-width:420px;margin-left:auto;position:relative}
+  .search input{width:100%;border:2px solid #ffe1ea;border-radius:999px;padding:10px 16px 10px 38px;font-family:inherit;font-size:13px;background:#fff}
+  .search input:focus{outline:none;border-color:var(--pink)}
+  .search .mag{position:absolute;left:14px;top:50%;transform:translateY(-50%);opacity:.5}
+  .btn{border:none;border-radius:999px;padding:11px 18px;font-family:'Baloo 2';font-weight:700;font-size:14px;display:inline-flex;align-items:center;gap:7px}
+  .btn-primary{color:#fff;background:linear-gradient(120deg,var(--pink-deep),var(--lav));box-shadow:0 8px 18px -8px rgba(255,93,143,.6),0 3px 0 #e0428f}
+  .btn-primary:active{transform:translateY(2px)}
+  .iconbtn{width:42px;height:42px;border-radius:50%;border:none;background:#fff;font-size:17px;box-shadow:0 4px 12px rgba(167,139,250,.18)}
+
+  .page{padding:22px 28px 60px;display:none}
+  .page.on{display:block}
+
+  /* toolbar (filters) */
+  .toolbar{display:flex;align-items:center;gap:8px;margin-bottom:20px;flex-wrap:wrap}
+  .seg{display:inline-flex;background:#fff;border-radius:999px;padding:4px;box-shadow:0 4px 12px rgba(167,139,250,.15)}
+  .seg button{border:none;background:transparent;border-radius:999px;padding:7px 14px;font-size:13px;font-weight:700;color:var(--ink-soft)}
+  .seg button.on{background:linear-gradient(120deg,#ffe0ec,#efe3ff);color:var(--pink-deep)}
+  .spacer{flex:1}
+  .sortlink{font-size:13px;color:var(--ink-soft);font-weight:700;background:#fff;border:none;border-radius:999px;padding:8px 14px;box-shadow:0 4px 12px rgba(167,139,250,.15)}
+
+  /* video grid */
+  .vidgrid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:20px}
+  .vcard{background:#fff;border-radius:20px;overflow:hidden;box-shadow:0 14px 30px -18px rgba(167,139,250,.5);transition:.18s;position:relative}
+  .vcard:hover{transform:translateY(-6px);box-shadow:0 24px 44px -18px rgba(255,93,143,.5)}
+  .thumb{aspect-ratio:16/9;background:linear-gradient(135deg,#ffd6e6,#d9c8ff);display:grid;place-items:center;font-size:38px;position:relative;cursor:pointer}
+  .ribbon{position:absolute;top:9px;left:9px;font-size:10px;font-weight:700;padding:4px 9px;border-radius:999px;color:#fff;display:flex;gap:4px;align-items:center}
+  .r-ready{background:var(--ready)}.r-proc{background:var(--proc)}.r-fail{background:var(--fail)}
+  .dur{position:absolute;bottom:9px;right:9px;font-size:10px;font-weight:700;padding:3px 7px;border-radius:8px;background:rgba(40,20,50,.6);color:#fff}
+  .fav{position:absolute;top:8px;right:8px;font-size:15px;width:30px;height:30px;border-radius:50%;display:grid;place-items:center;background:#fff;border:none;box-shadow:0 4px 10px rgba(0,0,0,.1)}
+  .play-ov{position:absolute;inset:0;display:grid;place-items:center;opacity:0;transition:.18s;pointer-events:none}
+  .thumb:hover .play-ov{opacity:1}
+  .play-ov span{width:50px;height:50px;border-radius:50%;background:rgba(255,255,255,.92);display:grid;place-items:center;font-size:20px;color:var(--pink-deep)}
+  .vbody{padding:13px 15px;display:flex;align-items:flex-start;gap:8px}
+  .vbody .meta{flex:1;min-width:0}
+  .vbody h4{margin:0;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  .vbody p{margin:3px 0 0;font-size:11px;color:var(--ink-soft)}
+  .kebab{border:none;background:transparent;font-size:16px;color:var(--ink-soft);padding:2px 4px;border-radius:8px}
+  .kebab:hover{background:#fff3f8}
+
+  /* empty state */
+  .empty{text-align:center;padding:60px 20px;color:var(--ink-soft)}
+  .empty .m{font-size:70px;animation:bob 2.6s ease-in-out infinite;display:inline-block}
+  @keyframes bob{0%,100%{transform:translateY(0) rotate(-4deg)}50%{transform:translateY(-10px) rotate(4deg)}}
+  .empty h3{font-size:20px;color:var(--ink);margin:10px 0 6px}
+
+  /* ---------- Watch page ---------- */
+  .watch{display:grid;grid-template-columns:1fr 320px;gap:24px}
+  @media(max-width:1000px){.watch{grid-template-columns:1fr}}
+  .player{background:linear-gradient(160deg,#2a2235,#191322);border-radius:22px;padding:12px;box-shadow:0 22px 50px -24px rgba(89,40,120,.6)}
+  .stage{aspect-ratio:16/9;border-radius:14px;background:radial-gradient(circle at 50% 40%,#3a2d4d,#1b1424);display:grid;place-items:center;color:#fff;position:relative;overflow:hidden}
+  .stage .bigplay{width:74px;height:74px;border-radius:50%;background:rgba(255,255,255,.9);display:grid;place-items:center;font-size:30px;color:var(--pink-deep);cursor:pointer}
+  .ctrls{display:flex;align-items:center;gap:12px;padding:10px 8px 4px;color:#e9def2}
+  .ctrls .bar{flex:1;height:6px;border-radius:999px;background:rgba(255,255,255,.18);position:relative}
+  .ctrls .bar i{position:absolute;left:0;top:0;bottom:0;width:34%;border-radius:999px;background:linear-gradient(90deg,var(--pink),var(--lav))}
+  .ctrls .bar i::after{content:"";position:absolute;right:-5px;top:50%;transform:translateY(-50%);width:13px;height:13px;border-radius:50%;background:#fff}
+  .ctrls small{font-size:11px;opacity:.8}
+  .vtitle{margin:18px 4px 0}
+  .vtitle h2{margin:0;font-size:22px}
+  .vtitle .row{display:flex;align-items:center;gap:14px;margin-top:8px;color:var(--ink-soft);font-size:13px}
+  .vtitle .actions{margin-left:auto;display:flex;gap:8px}
+  .chipbtn{border:none;background:#fff;border-radius:999px;padding:9px 14px;font-weight:700;font-size:13px;color:var(--ink);box-shadow:0 4px 12px rgba(167,139,250,.18);display:inline-flex;gap:6px;align-items:center}
+  .chipbtn.danger{color:var(--fail)}
+  .upnext h3{font-size:15px;margin:0 0 12px;display:flex;align-items:center;gap:6px}
+  .mini{display:flex;gap:11px;padding:8px;border-radius:14px;cursor:pointer}
+  .mini:hover{background:#fff}
+  .mini .mthumb{width:104px;aspect-ratio:16/9;border-radius:10px;background:linear-gradient(135deg,#ffd6e6,#d9c8ff);display:grid;place-items:center;font-size:22px;flex-shrink:0;position:relative}
+  .mini .mthumb .d{position:absolute;bottom:4px;right:4px;font-size:9px;background:rgba(40,20,50,.6);color:#fff;padding:2px 5px;border-radius:6px}
+  .mini b{font-size:13px;display:block;line-height:1.3}
+  .mini small{font-size:11px;color:var(--ink-soft)}
+
+  /* ---------- Modal ---------- */
+  .overlay{position:fixed;inset:0;background:rgba(70,40,80,.35);backdrop-filter:blur(3px);display:none;place-items:center;z-index:50;padding:20px}
+  .overlay.on{display:grid}
+  .modal{background:#fff;border-radius:28px;width:100%;max-width:480px;padding:28px;box-shadow:0 30px 70px -20px rgba(255,93,143,.5);position:relative}
+  .modal .x{position:absolute;top:16px;right:16px;width:34px;height:34px;border-radius:50%;border:none;background:#fff3f8;font-size:16px;color:var(--ink-soft)}
+  .modal h2{margin:0 0 4px;font-size:21px}
+  .modal .sub{margin:0 0 20px;color:var(--ink-soft);font-size:13px}
+  .drop{border:3px dashed #ffb6cd;border-radius:20px;background:linear-gradient(180deg,#fff,#fff7fa);padding:30px;text-align:center;transition:.2s}
+  .drop:hover{border-color:var(--pink-deep);background:#fff5fa}
+  .drop .m{font-size:50px;display:inline-block;animation:bob 2.4s ease-in-out infinite}
+  .drop h4{margin:8px 0 2px;font-size:16px}.drop p{margin:0;font-size:12px;color:var(--ink-soft)}
+  .field{margin-top:16px;text-align:left}
+  .field label{display:block;font-size:12px;font-weight:700;color:var(--ink-soft);margin-bottom:6px}
+  .field input{width:100%;border:2px solid #ffe1ea;border-radius:14px;padding:12px 14px;font-family:inherit;font-size:14px}
+  .field input:focus{outline:none;border-color:var(--pink)}
+  .progwrap{margin-top:16px}
+  .progbar{height:16px;border-radius:999px;background:#ffe4ee;overflow:hidden}
+  .progfill{height:100%;width:62%;border-radius:999px;background:repeating-linear-gradient(45deg,var(--pink) 0 12px,var(--pink-deep) 12px 24px)}
+  .progmeta{display:flex;justify-content:space-between;font-size:12px;color:var(--ink-soft);margin-top:6px}
+  .modal-actions{display:flex;gap:10px;margin-top:22px}
+  .btn-block{flex:1;justify-content:center;border-radius:16px;padding:13px}
+  .btn-ghost{background:#fff3f8;color:var(--ink-soft)}
+  .confirm-emoji{font-size:54px;text-align:center}
+  .center{text-align:center}
+  .hint{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);z-index:60;background:#fff;border-radius:999px;padding:8px 16px;font-size:12px;color:var(--ink-soft);box-shadow:0 8px 24px -8px rgba(255,93,143,.4)}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ===== Sidebar ===== -->
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">☁️</div>
+      <div><b>CloudCast</b><small>safe &amp; sparkly ✨</small></div>
+    </div>
+
+    <div class="navlabel">Library</div>
+    <button class="nav on" onclick="go('library',this)"><span class="ic">🎬</span> All clips <span class="count">8</span></button>
+    <button class="nav" onclick="go('library',this)"><span class="ic">♡</span> Favorites <span class="count">3</span></button>
+    <button class="nav" onclick="go('library',this)"><span class="ic">🕑</span> Recent</button>
+    <button class="nav" onclick="go('empty',this)"><span class="ic">🍳</span> Processing <span class="count">1</span></button>
+
+    <div class="navlabel">Other</div>
+    <button class="nav" onclick="go('library',this)"><span class="ic">🗑️</span> Trash</button>
+    <button class="nav" onclick="go('library',this)"><span class="ic">⚙️</span> Settings</button>
+
+    <div class="storage">
+      <div class="row"><span>Storage</span><b style="color:var(--ink)">4.3 / 10 GB</b></div>
+      <div class="meter"><span></span></div>
+      <small>Plenty of room for more clips ♡</small>
+    </div>
+    <div class="userbox">
+      <div class="ava">🌸</div>
+      <div style="flex:1"><b>Yuki</b><small>yuki@cloudcast.app</small></div>
+      <button class="kebab">⋯</button>
+    </div>
+  </aside>
+
+  <!-- ===== Main ===== -->
+  <main class="main">
+    <!-- Topbar -->
+    <div class="topbar">
+      <div class="crumb" id="crumb"><b>All clips</b><span>8 videos · 4.3 GB</span></div>
+      <div class="search"><span class="mag">🔍</span><input placeholder="Search your clips..." /></div>
+      <button class="btn btn-primary" onclick="openUpload()">＋ Upload</button>
+      <button class="iconbtn">🔔</button>
+    </div>
+
+    <!-- ===== Library page ===== -->
+    <section class="page on" id="page-library">
+      <div class="toolbar">
+        <div class="seg">
+          <button class="on">All</button><button>Ready</button><button>Cooking</button><button>Favorites</button>
+        </div>
+        <div class="spacer"></div>
+        <button class="sortlink">Sort: Newest ⌄</button>
+        <button class="sortlink">▦ Grid</button>
+      </div>
+
+      <div class="vidgrid">
+        <div class="vcard">
+          <div class="thumb" onclick="go('watch')">🌸<span class="ribbon r-ready">✌️ ready</span><span class="dur">04:12</span><button class="fav" onclick="event.stopPropagation()">♥</button><div class="play-ov"><span>▶</span></div></div>
+          <div class="vbody"><div class="meta"><h4>Sakura Festival 2026</h4><p>just now · 820 MB</p></div><button class="kebab">⋮</button></div>
+        </div>
+        <div class="vcard">
+          <div class="thumb" onclick="go('watch')">🎮<span class="ribbon r-ready">✌️ ready</span><span class="dur">02:55</span><button class="fav" onclick="event.stopPropagation()">♥</button><div class="play-ov"><span>▶</span></div></div>
+          <div class="vbody"><div class="meta"><h4>Boss fight highlight</h4><p>yesterday · 410 MB</p></div><button class="kebab">⋮</button></div>
+        </div>
+        <div class="vcard">
+          <div class="thumb">🍳<span class="ribbon r-proc">🍳 cooking</span><button class="fav" onclick="event.stopPropagation()">♡</button></div>
+          <div class="vbody"><div class="meta"><h4>Cafe vlog #3</h4><p>processing… 78%</p></div><button class="kebab">⋮</button></div>
+        </div>
+        <div class="vcard">
+          <div class="thumb" onclick="go('watch')">🐱<span class="ribbon r-ready">✌️ ready</span><span class="dur">06:30</span><button class="fav" onclick="event.stopPropagation()">♥</button><div class="play-ov"><span>▶</span></div></div>
+          <div class="vbody"><div class="meta"><h4>Neko nap compilation</h4><p>2 days ago · 1.1 GB</p></div><button class="kebab" onclick="openDelete(event)">⋮</button></div>
+        </div>
+        <div class="vcard">
+          <div class="thumb">🎤<span class="ribbon r-fail">😢 oops</span><button class="fav" onclick="event.stopPropagation()">♡</button></div>
+          <div class="vbody"><div class="meta"><h4>Karaoke night</h4><p>tap to retry</p></div><button class="kebab">⋮</button></div>
+        </div>
+        <div class="vcard">
+          <div class="thumb" onclick="go('watch')">🌊<span class="ribbon r-ready">✌️ ready</span><span class="dur">08:01</span><button class="fav" onclick="event.stopPropagation()">♡</button><div class="play-ov"><span>▶</span></div></div>
+          <div class="vbody"><div class="meta"><h4>Beach trip</h4><p>last week · 2.0 GB</p></div><button class="kebab">⋮</button></div>
+        </div>
+        <div class="vcard">
+          <div class="thumb" onclick="go('watch')">🌃<span class="ribbon r-ready">✌️ ready</span><span class="dur">03:20</span><button class="fav" onclick="event.stopPropagation()">♡</button><div class="play-ov"><span>▶</span></div></div>
+          <div class="vbody"><div class="meta"><h4>Night drive</h4><p>last week · 600 MB</p></div><button class="kebab">⋮</button></div>
+        </div>
+        <div class="vcard">
+          <div class="thumb" onclick="go('watch')">🤖<span class="ribbon r-ready">✌️ ready</span><span class="dur">05:44</span><button class="fav" onclick="event.stopPropagation()">♡</button><div class="play-ov"><span>▶</span></div></div>
+          <div class="vbody"><div class="meta"><h4>Mecha review</h4><p>2 weeks ago · 980 MB</p></div><button class="kebab">⋮</button></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- ===== Empty state page ===== -->
+    <section class="page" id="page-empty">
+      <div class="empty">
+        <div class="m">☁️</div>
+        <h3>Nothing cooking right now</h3>
+        <p>When you upload a clip, you'll see it transcoding here.</p>
+        <button class="btn btn-primary" style="margin-top:16px" onclick="openUpload()">＋ Upload a clip</button>
+      </div>
+    </section>
+
+    <!-- ===== Watch page ===== -->
+    <section class="page" id="page-watch">
+      <button class="sortlink" style="margin-bottom:16px" onclick="go('library')">← Back to library</button>
+      <div class="watch">
+        <div>
+          <div class="player">
+            <div class="stage"><div class="bigplay">▶</div></div>
+            <div class="ctrls"><span>❚❚</span><small>1:24</small><div class="bar"><i></i></div><small>4:12</small><span>🔊</span><span>⛶</span></div>
+          </div>
+          <div class="vtitle">
+            <h2>Sakura Festival 2026 🌸</h2>
+            <div class="row">
+              <span>✌️ Ready</span><span>·</span><span>820 MB</span><span>·</span><span>uploaded just now</span>
+              <div class="actions">
+                <button class="chipbtn">♥ Favorite</button>
+                <button class="chipbtn">⤓ Download</button>
+                <button class="chipbtn danger" onclick="openDelete(event)">🗑️ Delete</button>
+              </div>
+            </div>
+          </div>
+        </div>
+        <aside class="upnext">
+          <h3>Up next ☁️</h3>
+          <div class="mini" onclick="go('watch')"><div class="mthumb">🎮<span class="d">02:55</span></div><div><b>Boss fight highlight</b><small>yesterday</small></div></div>
+          <div class="mini" onclick="go('watch')"><div class="mthumb">🐱<span class="d">06:30</span></div><div><b>Neko nap compilation</b><small>2 days ago</small></div></div>
+          <div class="mini" onclick="go('watch')"><div class="mthumb">🌊<span class="d">08:01</span></div><div><b>Beach trip</b><small>last week</small></div></div>
+          <div class="mini" onclick="go('watch')"><div class="mthumb">🌃<span class="d">03:20</span></div><div><b>Night drive</b><small>last week</small></div></div>
+        </aside>
+      </div>
+    </section>
+  </main>
+</div>
+
+<!-- ===== Upload modal ===== -->
+<div class="overlay" id="uploadModal">
+  <div class="modal">
+    <button class="x" onclick="closeModals()">✕</button>
+    <h2>Upload a clip 📼</h2>
+    <p class="sub">Drop a video and we'll tuck it away just for you ♡</p>
+    <div class="drop">
+      <div class="m">☁️</div>
+      <h4>Drag your video here</h4>
+      <p>or click to browse · mp4 / mov · big files welcome</p>
+    </div>
+    <div class="field"><label>Title</label><input value="Sakura Festival 2026 🌸" /></div>
+    <div class="progwrap">
+      <div class="progbar"><div class="progfill"></div></div>
+      <div class="progmeta"><span>Uploading… part 38 / 61 🍳</span><span>62%</span></div>
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-block" onclick="closeModals()">Cancel</button>
+      <button class="btn btn-primary btn-block">Upload &amp; sparkle ✨</button>
+    </div>
+  </div>
+</div>
+
+<!-- ===== Delete confirm modal ===== -->
+<div class="overlay" id="deleteModal">
+  <div class="modal" style="max-width:380px">
+    <div class="confirm-emoji">🥺</div>
+    <h2 class="center">Delete this clip?</h2>
+    <p class="sub center">This removes the uploaded and processed files for<br><b>"Neko nap compilation"</b>. It can't be undone.</p>
+    <div class="modal-actions">
+      <button class="btn btn-ghost btn-block" onclick="closeModals()">Keep it</button>
+      <button class="btn btn-block" style="background:linear-gradient(120deg,#fb7185,#f43f5e);color:#fff" onclick="closeModals()">Delete 💔</button>
+    </div>
+  </div>
+</div>
+
+<div class="hint">💡 Click thumbnails → watch page · ＋ Upload → modal · ⋮ on "Neko nap" → delete modal · sidebar → switch views</div>
+
+<script>
+  function go(view, el){
+    document.querySelectorAll('.page').forEach(p=>p.classList.remove('on'));
+    document.getElementById('page-'+view).classList.add('on');
+    document.querySelector('.main').scrollTo(0,0);
+    if(el){document.querySelectorAll('.nav').forEach(n=>n.classList.remove('on'));el.classList.add('on');}
+    const crumb=document.getElementById('crumb');
+    if(view==='library')crumb.innerHTML='<b>All clips</b><span>8 videos · 4.3 GB</span>';
+    if(view==='watch')crumb.innerHTML='<b>Now watching</b><span>Sakura Festival 2026</span>';
+    if(view==='empty')crumb.innerHTML='<b>Processing</b><span>1 clip cooking</span>';
+  }
+  function openUpload(){document.getElementById('uploadModal').classList.add('on');}
+  function openDelete(e){e&&e.stopPropagation();document.getElementById('deleteModal').classList.add('on');}
+  function closeModals(){document.querySelectorAll('.overlay').forEach(o=>o.classList.remove('on'));}
+  document.querySelectorAll('.overlay').forEach(o=>o.addEventListener('click',e=>{if(e.target===o)closeModals();}));
+</script>
+</body>
+</html>

@@ -57,6 +57,8 @@ export type UploadInitRequest = {
   filename: string
   contentType: string
   title: string
+  sizeBytes?: number
+  durationSeconds?: number
 }
 
 export type UploadInitResponse = {
@@ -99,6 +101,21 @@ export const requestStream = async (
 export const removeVideo = async (videoId: string) => {
   return apiRequest<{ status: string }>(`/videos/${videoId}`, {
     method: 'DELETE',
+  })
+}
+
+export type UpdateVideoRequest = {
+  title?: string
+  favorite?: boolean
+}
+
+export const updateVideo = async (
+  videoId: string,
+  payload: UpdateVideoRequest,
+): Promise<VideoItem> => {
+  return apiRequest<VideoItem>(`/videos/${videoId}`, {
+    method: 'PATCH',
+    body: payload,
   })
 }
 

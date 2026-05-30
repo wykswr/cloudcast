@@ -1,11 +1,27 @@
-@import url("https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;600;700&display=swap");
+@import url("https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap");
 @import "tailwindcss";
 
+/* ---- Sakura design tokens ---- */
+@theme {
+  --color-sakura-pink: #ff8fb1;
+  --color-sakura-pink-deep: #ff5d8f;
+  --color-sakura-lav: #a78bfa;
+  --color-sakura-sky: #7dd3fc;
+  --color-sakura-cream: #fff5f7;
+  --color-sakura-ink: #5b4a63;
+  --color-sakura-ink-soft: #8b7a93;
+  --color-sakura-ready: #34d399;
+  --color-sakura-proc: #fbbf24;
+  --color-sakura-fail: #fb7185;
+  --color-sakura-app: #fbf3f8;
+
+  --font-display: "Baloo 2", system-ui, sans-serif;
+  --font-body: "M PLUS Rounded 1c", system-ui, sans-serif;
+}
+
 :root {
-  color: #e2e8f0;
-  background: radial-gradient(circle at 20% 20%, rgba(56, 189, 248, 0.15), transparent 25%),
-    radial-gradient(circle at 80% 0%, rgba(14, 165, 233, 0.12), transparent 30%),
-    #020617;
+  color: var(--color-sakura-ink);
+  background: var(--color-sakura-app);
   min-height: 100%;
 }
 
@@ -15,11 +31,78 @@
 
 body {
   margin: 0;
-  font-family: "Space Grotesk", "Inter", system-ui, -apple-system, "Segoe UI",
-    sans-serif;
-  background: transparent;
+  font-family: var(--font-body);
+  background: var(--color-sakura-app);
 }
 
 #root {
   min-height: 100vh;
+}
+
+h1, h2, h3, h4 {
+  font-family: var(--font-display);
+}
+
+/* ---- Reusable component classes (kept here so JSX stays readable) ---- */
+@layer components {
+  .sk-card {
+    @apply rounded-3xl bg-white p-6;
+    box-shadow: 0 18px 40px -20px rgba(255, 93, 143, 0.4), 0 2px 0 #ffe4ee inset;
+  }
+
+  .sk-btn {
+    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5
+      font-display text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60;
+  }
+  .sk-btn-primary {
+    @apply text-white;
+    background: linear-gradient(120deg, var(--color-sakura-pink-deep), var(--color-sakura-lav));
+    box-shadow: 0 8px 18px -8px rgba(255, 93, 143, 0.6), 0 3px 0 #e0428f;
+  }
+  .sk-btn-primary:active {
+    transform: translateY(2px);
+    box-shadow: 0 5px 12px -8px rgba(255, 93, 143, 0.6);
+  }
+  .sk-btn-ghost {
+    @apply text-sakura-ink-soft;
+    background: #fff3f8;
+  }
+  .sk-btn-danger {
+    @apply text-white;
+    background: linear-gradient(120deg, #fb7185, #f43f5e);
+  }
+
+  .sk-input {
+    @apply w-full rounded-2xl border-2 border-[#ffe1ea] bg-white px-3.5 py-3
+      text-sm text-sakura-ink outline-none transition placeholder:text-sakura-ink-soft/70;
+  }
+  .sk-input:focus {
+    @apply border-sakura-pink;
+  }
+
+  .sk-nav {
+    @apply flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left
+      text-sm font-bold text-sakura-ink-soft transition;
+  }
+  .sk-nav:hover {
+    @apply bg-[#fff3f8] text-sakura-ink;
+  }
+  .sk-nav-active {
+    @apply text-sakura-pink-deep;
+    background: linear-gradient(120deg, #ffe0ec, #efe3ff);
+  }
+
+  .sk-chip {
+    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold;
+  }
+}
+
+/* Gentle mascot bob used across empty/idle states. */
+@keyframes sk-bob {
+  0%, 100% { transform: translateY(0) rotate(-4deg); }
+  50% { transform: translateY(-10px) rotate(4deg); }
+}
+.sk-bob {
+  display: inline-block;
+  animation: sk-bob 2.6s ease-in-out infinite;
 }

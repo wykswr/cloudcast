@@ -25,6 +25,10 @@ class Settings(BaseSettings):
 
     multipart_url_expiration_seconds: int = Field(default=3600)
     stream_url_ttl_minutes: int = Field(default=60)
+    # Per-user cumulative storage quota across all of a user's videos.
+    storage_quota_bytes: int = Field(
+        default=20 * 1024**3, alias="STORAGE_QUOTA_BYTES"
+    )
 
     # Accepts comma-separated list for convenience; use .cors_allow_origins to read.
     cors_allow_origins_raw: str = Field(

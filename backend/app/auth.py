@@ -125,6 +125,7 @@ UserDep = Annotated[AuthenticatedUser, Depends(get_current_user)]
 
 
 def get_admin_user(user: UserDep) -> AuthenticatedUser:
+    print(f"User groups: {user.groups}")  # Debugging statement
     if "admin" not in user.groups:
         raise HTTPException(
             status_code=status.HTTP_403_FORBIDDEN,

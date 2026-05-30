@@ -5,12 +5,17 @@ export type AuthUser = {
   email?: string | null
 }
 
+export type VideoStatus = 'uploading' | 'processing' | 'ready' | 'failed'
+
 export type VideoItem = {
   id: string
   title?: string | null
-  status: 'uploading' | 'processing' | 'ready' | 'failed' | string
+  status: VideoStatus | string
   createdAt: number
   s3KeyHls?: string | null
+  sizeBytes?: number | null
+  durationSeconds?: number | null
+  favorite?: boolean
 }
 
 export type UploadState = {
