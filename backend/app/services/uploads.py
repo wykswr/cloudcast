@@ -23,6 +23,12 @@ class UploadService:
     ) -> tuple[str, str]:
         self.repository.ensure_user_record(user)
 
+        # Reserve quota before creating the S3 multipart upload so we fail fast
+        # (and don't leave an orphaned multipart session) when the user is over
+        # their cumulative storage limit.
+        if payload.size_bytes is not None:
+            self.repository.reserve_storage(user.id, payload.size_bytes)
+
         video_id = str(uuid.uuid4())
         s3_key_raw = f"{user.id}/{video_id}/raw/{payload.filename}"
 

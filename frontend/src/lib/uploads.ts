@@ -8,6 +8,10 @@ import type { UploadState } from '../types'
 import { formatError } from '../utils/format'
 
 const CHUNK_SIZE = 10 * 1024 * 1024
+// Number of parts uploaded in parallel. S3 multipart parts are independent
+// PUTs, so several in flight at once saturates the connection far better than
+// uploading them one at a time.
+const UPLOAD_CONCURRENCY = 4
 
 type MultipartUploadParams = {
   file: File
@@ -55,20 +59,33 @@ export const multipartUpload = async ({
     durationSeconds,
   })
 
+  // Slice the file into independent parts up front, then upload them through a
+  // small pool of workers running in parallel.
+  const chunks: { partNumber: number; chunk: Blob }[] = []
+  for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) {
+    chunks.push({
+      partNumber: chunks.length + 1,
+      chunk: file.slice(offset, offset + CHUNK_SIZE),
+    })
+  }
+  // A zero-byte file still needs one (empty) part so the multipart upload can
+  // be completed.
+  if (chunks.length === 0) {
+    chunks.push({ partNumber: 1, chunk: file.slice(0, 0) })
+  }
+
   const parts: CompleteUploadRequest['parts'] = []
   let uploadedBytes = 0
-  let partNumber = 1
+  let completedParts = 0
+  const contentType = file.type || 'application/octet-stream'
 
-  for (let offset = 0; offset < file.size; offset += CHUNK_SIZE) {
-    const chunk = file.slice(offset, offset + CHUNK_SIZE)
-
-    onProgress({
-      stage: 'uploading',
-      message: `Signing part ${partNumber}`,
-      percent: Math.round((uploadedBytes / file.size) * 100),
-      videoId,
-    })
-
+  const uploadPart = async ({
+    partNumber,
+    chunk,
+  }: {
+    partNumber: number
+    chunk: Blob
+  }) => {
     const { presignedUrl } = await signUploadPart({
       videoId,
       uploadId,
@@ -78,9 +95,7 @@ export const multipartUpload = async ({
     const putResponse = await fetch(presignedUrl, {
       method: 'PUT',
       body: chunk,
-      headers: {
-        'Content-Type': file.type || 'application/octet-stream',
-      },
+      headers: { 'Content-Type': contentType },
     })
 
     if (!putResponse.ok) {
@@ -91,20 +106,33 @@ export const multipartUpload = async ({
     parts.push({ etag, partNumber })
 
     uploadedBytes += chunk.size
-    const percent = Math.min(
-      99,
-      Math.round((uploadedBytes / file.size) * 100),
-    )
+    completedParts += 1
 
     onProgress({
       stage: 'uploading',
-      message: `Uploaded part ${partNumber}`,
-      percent,
+      message: `Uploaded ${completedParts}/${chunks.length} parts`,
+      percent: Math.min(99, Math.round((uploadedBytes / file.size) * 100)),
       videoId,
     })
-
-    partNumber += 1
   }
+
+  // Worker pool: each worker pulls the next part off a shared cursor until the
+  // queue is drained, capping in-flight uploads at UPLOAD_CONCURRENCY.
+  let cursor = 0
+  const worker = async () => {
+    while (cursor < chunks.length) {
+      const next = chunks[cursor]
+      cursor += 1
+      await uploadPart(next)
+    }
+  }
+
+  const workerCount = Math.min(UPLOAD_CONCURRENCY, chunks.length)
+  await Promise.all(Array.from({ length: workerCount }, () => worker()))
+
+  // S3 requires parts ordered by part number on completion; the pool may finish
+  // them out of order.
+  parts.sort((a, b) => a.partNumber - b.partNumber)
 
   await completeUpload({ videoId, uploadId, parts })
 

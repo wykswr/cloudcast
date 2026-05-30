@@ -43,7 +43,7 @@ Resources:
                 Identity:
                   Header: Authorization
       Cors:
-        AllowMethods: "'OPTIONS, GET, POST, DELETE'"
+        AllowMethods: "'OPTIONS, GET, POST, PATCH, DELETE'"
         AllowHeaders: "'Content-Type,Authorization'"
         AllowOrigin: !Sub "'https://${FrontendCloudFrontDistribution.DomainName}'"
 
