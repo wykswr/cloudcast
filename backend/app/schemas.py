@@ -7,6 +7,8 @@ class UploadInitRequest(BaseModel):
     filename: str
     content_type: str = Field(..., alias="contentType")
     title: str | None = None
+    size_bytes: int | None = Field(default=None, alias="sizeBytes", ge=0)
+    duration_seconds: float | None = Field(default=None, alias="durationSeconds", ge=0)
 
 
 class UploadInitResponse(BaseModel):
@@ -57,10 +59,20 @@ class VideoListItem(BaseModel):
     status: str
     created_at: int = Field(..., alias="createdAt")
     s3_key_hls: str | None = Field(default=None, alias="s3KeyHls")
+    size_bytes: int | None = Field(default=None, alias="sizeBytes")
+    duration_seconds: float | None = Field(default=None, alias="durationSeconds")
+    favorite: bool = False
 
 
 class VideoListResponse(BaseModel):
     items: list[VideoListItem]
+
+
+class UpdateVideoRequest(BaseModel):
+    model_config = ConfigDict(populate_by_name=True)
+
+    title: str | None = None
+    favorite: bool | None = None
 
 
 class StreamResponse(BaseModel):

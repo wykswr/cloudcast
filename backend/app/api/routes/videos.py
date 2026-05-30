@@ -9,6 +9,7 @@ from app.schemas import (
     SignPartRequest,
     SignPartResponse,
     StreamResponse,
+    UpdateVideoRequest,
     UploadInitRequest,
     UploadInitResponse,
     VideoListItem,
@@ -65,6 +66,18 @@ def list_videos(
 ) -> VideoListResponse:
     items = service.list_user_videos(user)
     return VideoListResponse(items=[VideoListItem(**item) for item in items])
+
+
+@router.patch("/{video_id}", response_model=VideoListItem)
+def update_video(
+    video_id: str,
+    payload: UpdateVideoRequest,
+    user: AdminUserDep,
+    service: VideoServiceDep,
+) -> VideoListItem:
+    fields = payload.model_dump(exclude_none=True)
+    item = service.update_video(user, video_id, fields)
+    return VideoListItem(**item)
 
 
 @router.delete("/{video_id}", response_model=DeleteVideoResponse)

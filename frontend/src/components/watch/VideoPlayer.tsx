@@ -7,30 +7,27 @@ import type {
   LoaderCallbacks,
 } from 'hls.js'
 
-type HlsPlayerProps = {
+type VideoPlayerProps = {
   src: string
-  title?: string | null
 }
 
-function HlsPlayer({ src, title }: HlsPlayerProps) {
+/**
+ * HLS player that re-attaches CloudFront signed query params to every request
+ * (master manifest, variant playlists, segments) so key-group validation passes.
+ */
+function VideoPlayer({ src }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
 
   useEffect(() => {
     const video = videoRef.current
-    if (!video || !src) {
-      return
-    }
+    if (!video || !src) return
 
     const srcUrl = new URL(src)
     const manifestUrl = srcUrl.toString()
     const tokenQuery = srcUrl.searchParams.toString()
-    // Base URL of the HLS folder so relative variant/segment requests resolve
-    // against the CloudFront origin, not the app origin.
     const baseUrl = new URL('./', srcUrl)
 
     if (Hls.isSupported()) {
-      // Attach signed query parameters to every HLS request (master, variants, segments)
-      // so CloudFront key group validation succeeds.
       const SignedLoader = class extends Hls.DefaultConfig.loader {
         constructor(config: HlsConfig) {
           super(config)
@@ -38,15 +35,13 @@ function HlsPlayer({ src, title }: HlsPlayerProps) {
         load(
           context: LoaderContext,
           config: LoaderConfiguration,
-          callbacks: LoaderCallbacks<LoaderContext>
+          callbacks: LoaderCallbacks<LoaderContext>,
         ) {
           if (context.url) {
             const url = new URL(context.url, baseUrl)
             if (tokenQuery) {
               const params = new URLSearchParams(tokenQuery)
-              params.forEach((value, key) => {
-                url.searchParams.set(key, value)
-              })
+              params.forEach((value, key) => url.searchParams.set(key, value))
             }
             context.url = url.toString()
           }
@@ -57,30 +52,28 @@ function HlsPlayer({ src, title }: HlsPlayerProps) {
       const hls = new Hls({ enableWorker: true, loader: SignedLoader })
       hls.loadSource(manifestUrl)
       hls.attachMedia(video)
-
-      return () => {
-        hls.destroy()
-      }
+      return () => hls.destroy()
     }
 
     video.src = manifestUrl
-    return () => {
-      video.removeAttribute('src')
-    }
+    return () => video.removeAttribute('src')
   }, [src])
 
   return (
-    <div>
-      <div className="mb-2 flex items-center text-sm text-slate-300">
-        <div className="font-semibold">{title ?? 'HLS Stream'}</div>
-      </div>
+    <div
+      className="rounded-[22px] p-3"
+      style={{
+        background: 'linear-gradient(160deg,#2a2235,#191322)',
+        boxShadow: '0 22px 50px -24px rgba(89,40,120,0.6)',
+      }}
+    >
       <video
         ref={videoRef}
         controls
-        className="aspect-video w-full rounded-xl bg-black ring-2 ring-slate-800"
+        className="aspect-video w-full rounded-[14px] bg-black"
       />
     </div>
   )
 }
 
-export default HlsPlayer
+export default VideoPlayer

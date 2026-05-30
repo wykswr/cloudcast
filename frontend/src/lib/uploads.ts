@@ -15,15 +15,44 @@ type MultipartUploadParams = {
   onProgress: (state: UploadState) => void
 }
 
+/**
+ * Read the playback duration from a local video file via a throwaway <video>
+ * element. Best-effort: resolves to undefined if the browser can't read it.
+ */
+export const probeDuration = (file: File): Promise<number | undefined> =>
+  new Promise((resolve) => {
+    if (!file.type.startsWith('video/')) {
+      resolve(undefined)
+      return
+    }
+    const url = URL.createObjectURL(file)
+    const video = document.createElement('video')
+    video.preload = 'metadata'
+    const cleanup = () => URL.revokeObjectURL(url)
+    video.onloadedmetadata = () => {
+      cleanup()
+      resolve(Number.isFinite(video.duration) ? video.duration : undefined)
+    }
+    video.onerror = () => {
+      cleanup()
+      resolve(undefined)
+    }
+    video.src = url
+  })
+
 export const multipartUpload = async ({
   file,
   title,
   onProgress,
 }: MultipartUploadParams) => {
+  const durationSeconds = await probeDuration(file)
+
   const { uploadId, videoId } = await initUpload({
     filename: file.name,
     contentType: file.type || 'application/octet-stream',
     title,
+    sizeBytes: file.size,
+    durationSeconds,
   })
 
   const parts: CompleteUploadRequest['parts'] = []

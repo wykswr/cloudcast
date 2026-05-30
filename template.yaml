@@ -21,7 +21,7 @@ Parameters:
 
 Globals:
   Function:
-    Runtime: python3.11
+    Runtime: python3.13
     Architectures:
       - x86_64
     MemorySize: 512

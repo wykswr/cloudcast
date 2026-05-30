@@ -56,6 +56,8 @@ class VideoRepository:
         s3_key_raw: str,
         upload_id: str,
         created_at: int,
+        size_bytes: int | None = None,
+        duration_seconds: float | None = None,
     ) -> None:
         item: dict[str, Any] = {
             "user_id": user_id,
@@ -65,7 +67,14 @@ class VideoRepository:
             "status": "uploading",
             "upload_id": upload_id,
             "created_at": created_at,
+            "favorite": False,
         }
+        if size_bytes is not None:
+            item["size_bytes"] = size_bytes
+        if duration_seconds is not None:
+            # DynamoDB stores numbers as Decimal; round to whole seconds to avoid
+            # float-precision serialization issues.
+            item["duration_seconds"] = int(duration_seconds)
 
         try:
             self.videos_table.put_item(Item=item)
@@ -185,6 +194,47 @@ class VideoRepository:
                 detail=f"Unable to update video status: {error.get('Message', 'Unknown error')}",
             ) from exc
 
+    def update_fields(
+        self, user_id: str, video_id: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        # `favorite` is a plain attribute; `title` is too. Build a safe update
+        # expression with placeholder names so reserved words never bite us.
+        set_clauses = []
+        names: dict[str, str] = {}
+        values: dict[str, Any] = {}
+        for index, (key, value) in enumerate(fields.items()):
+            name_token = f"#f{index}"
+            value_token = f":v{index}"
+            names[name_token] = key
+            values[value_token] = value
+            set_clauses.append(f"{name_token} = {value_token}")
+
+        try:
+            response = self.videos_table.update_item(
+                Key={"user_id": user_id, "id": video_id},
+                UpdateExpression="SET " + ", ".join(set_clauses),
+                ExpressionAttributeNames=names,
+                ExpressionAttributeValues=values,
+                ReturnValues="ALL_NEW",
+            )
+        except ClientError as exc:
+            error = exc.response.get("Error", {})
+            logger.exception(
+                "Unable to update video record",
+                extra={
+                    "user_id": user_id,
+                    "video_id": video_id,
+                    "error_code": error.get("Code"),
+                    "error_message": error.get("Message"),
+                },
+            )
+            raise HTTPException(
+                status_code=status.HTTP_502_BAD_GATEWAY,
+                detail=f"Unable to update video record: {error.get('Message', 'Unknown error')}",
+            ) from exc
+
+        return response.get("Attributes", {})
+
     def assert_owner(self, user_id: str, video: dict[str, Any]) -> None:
         if video.get("user_id") != user_id:
             raise HTTPException(
@@ -228,6 +278,15 @@ class VideoService:
             )
         self.repository.assert_owner(user.id, video)
         return video
+
+    def update_video(
+        self, user: AuthenticatedUser, video_id: str, fields: dict[str, Any]
+    ) -> dict[str, Any]:
+        # Confirm ownership before mutating (raises 404 if missing/not owner).
+        self.load_owned_video(user, video_id)
+        if not fields:
+            return self.repository.get_video(user.id, video_id) or {}
+        return self.repository.update_fields(user.id, video_id, fields)
 
     def _delete_s3_prefix(self, bucket: str, prefix: str) -> None:
         paginator = self.s3.get_paginator("list_objects_v2")

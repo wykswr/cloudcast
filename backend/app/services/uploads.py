@@ -53,6 +53,8 @@ class UploadService:
             s3_key_raw=s3_key_raw,
             upload_id=upload_id,
             created_at=created_at,
+            size_bytes=payload.size_bytes,
+            duration_seconds=payload.duration_seconds,
         )
 
         return upload_id, video_id

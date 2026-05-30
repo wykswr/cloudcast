@@ -1,0 +1,62 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>CloudCast · Design mockups</title>
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+  *{box-sizing:border-box}html,body{margin:0}
+  body{font-family:'M PLUS Rounded 1c',sans-serif;color:#5b4a63;min-height:100vh;padding:48px 24px;
+    background:radial-gradient(1000px 600px at 15% 0%,#ffe3ee,transparent 55%),radial-gradient(900px 600px at 100% 100%,#ece2ff,transparent 55%),linear-gradient(160deg,#fff5f7,#f6ecff 60%,#eef4ff)}
+  .wrap{max-width:1000px;margin:0 auto}
+  h1{font-family:'Baloo 2';font-size:34px;margin:0 0 6px;background:linear-gradient(90deg,#ff5d8f,#a78bfa);-webkit-background-clip:text;background-clip:text;color:transparent}
+  .sub{color:#8b7a93;margin:0 0 32px;font-size:15px}
+  .grid{display:grid;grid-template-columns:repeat(2,1fr);gap:22px}
+  @media(max-width:700px){.grid{grid-template-columns:1fr}}
+  .card{display:block;text-decoration:none;color:inherit;background:#fff;border-radius:24px;padding:24px;
+    box-shadow:0 18px 40px -20px rgba(255,93,143,.4);transition:.2s}
+  .card:hover{transform:translateY(-6px);box-shadow:0 28px 50px -20px rgba(255,93,143,.5)}
+  .swatch{height:120px;border-radius:16px;margin-bottom:16px;display:grid;place-items:center;font-size:46px}
+  .sw-sakura{background:linear-gradient(160deg,#ffd6e6,#d9c8ff)}
+  .sw-night{background:linear-gradient(160deg,#241541,#0f0a1e);box-shadow:0 0 30px rgba(34,211,238,.3) inset}
+  .sw-auth{background:linear-gradient(160deg,#ffe3ee,#cdb4ff)}
+  .card h2{font-family:'Baloo 2';margin:0 0 4px;font-size:20px}
+  .card p{margin:0;color:#8b7a93;font-size:13px}
+  .chips{margin-top:12px;display:flex;gap:6px;flex-wrap:wrap}
+  .chip{font-size:11px;font-weight:700;padding:4px 10px;border-radius:999px;background:#f6eefc;color:#a78bfa}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>CloudCast · ACG UI mockups ☁️✨</h1>
+  <p class="sub">Click a concept to open the full-screen mockup. All static HTML — no build needed.</p>
+  <div class="grid">
+    <a class="card" href="sakura-app.html" style="grid-column:1/-1">
+      <div class="swatch sw-sakura">🏠✨</div>
+      <h2>Sakura App — full IA ⭐ recommended</h2>
+      <p>Interactive multi-view: sidebar nav, library page, dedicated watch page, upload modal &amp; cute delete confirm. Click around — it's a real layout, not one stacked page.</p>
+      <div class="chips"><span class="chip">sidebar nav</span><span class="chip">watch page</span><span class="chip">modals</span><span class="chip">interactive</span></div>
+    </a>
+    <a class="card" href="sakura-idol.html">
+      <div class="swatch sw-sakura">🌸</div>
+      <h2>Sakura Idol</h2>
+      <p>Pastel kawaii dashboard — soft pinks &amp; lavender, sticker cards, mascot-driven states.</p>
+      <div class="chips"><span class="chip">light</span><span class="chip">pastel</span><span class="chip">Baloo 2</span></div>
+    </a>
+    <a class="card" href="night-city.html">
+      <div class="swatch sw-night">🌃</div>
+      <h2>Night City Stream</h2>
+      <p>Neon cyber-cute — keeps your dark base, swaps corporate blue for vaporwave glow.</p>
+      <div class="chips"><span class="chip">dark</span><span class="chip">neon</span><span class="chip">Orbitron</span></div>
+    </a>
+    <a class="card" href="auth-sakura.html">
+      <div class="swatch sw-auth">🔑</div>
+      <h2>Login screen</h2>
+      <p>Sakura-theme sign in / sign up with mascot hero panel &amp; de-jargoned copy.</p>
+      <div class="chips"><span class="chip">auth</span><span class="chip">first impression</span></div>
+    </a>
+  </div>
+</div>
+</body>
+</html>
