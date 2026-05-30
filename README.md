@@ -2,11 +2,12 @@
 
 CloudCast is a full-stack, AWS-backed video hosting PoC: users authenticate with Cognito, upload large videos via S3 multipart upload, videos are transcoded to HLS with MediaConvert via Step Functions, and playback is served through CloudFront using signed URLs.
 
-- Architecture deep dive: `ARCHITECTURE.md`
-- Product/design notes: `DESIGN.md`
+- Architecture deep dive: `docs/ARCHITECTURE.md`
+- Product/design notes: `docs/DESIGN.md`
 
 ## Repo layout
 
+- `docs/`: reference documentation (architecture and product/design notes)
 - `template.yaml`: AWS SAM template (API Gateway + Lambda/FastAPI, Cognito, S3, DynamoDB, Step Functions, CloudFront)
 - `backend/`: FastAPI app (runs locally via Uvicorn; deployed to Lambda via Mangum)
 - `frontend/`: React + Vite + TypeScript app (Amplify Auth, multipart upload client, HLS playback via hls.js)
@@ -24,7 +25,7 @@ CloudCast is a full-stack, AWS-backed video hosting PoC: users authenticate with
 
 
 ### AWS profile
-The SAM template and deploy script use the `personal` AWS CLI profile by default.
+The SAM template and deploy script use the `personal` AWS CLI profile by default. If your local AWS CLI uses a different profile name, replace `personal` in the commands below with your own profile.
 
 ### Backend (FastAPI)
 
@@ -32,7 +33,7 @@ The SAM template and deploy script use the `personal` AWS CLI profile by default
 cd backend
 cp .env.example .env
 uv sync
-uv run uvicorn main:app --reload
+AWS_PROFILE=personal uv run uvicorn main:app --reload
 ```
 
 The backend reads configuration from environment variables (see `backend/app/config.py`) and supports optional `DYNAMODB_ENDPOINT_URL` / `S3_ENDPOINT_URL` for local emulators.
@@ -50,7 +51,7 @@ For local dev, `VITE_API_BASE_URL` typically points at `http://localhost:8000`.
 
 ## Deploy to AWS (SAM)
 
-### 1) Create CloudFront signing keys in SSM
+### 1. Create CloudFront signing keys in SSM
 
 The SAM template expects:
 
@@ -67,8 +68,8 @@ openssl rsa -pubout -in cloudfront_private_key.pem -out cloudfront_public_key.pe
 Store them in SSM (recommended: public key as `String`, private key as `SecureString`):
 
 ```bash
-aws ssm put-parameter --name /cloudcast/dev/cloudfront-public-key --type String --value "$(cat cloudfront_public_key.pem)" --overwrite
-aws ssm put-parameter --name /cloudcast/dev/cloudfront-private-key --type SecureString --value "$(cat cloudfront_private_key.pem)" --overwrite
+aws ssm put-parameter --profile personal --name /cloudcast/dev/cloudfront-public-key --type String --value "$(cat cloudfront_public_key.pem)" --overwrite
+aws ssm put-parameter --profile personal --name /cloudcast/dev/cloudfront-private-key --type SecureString --value "$(cat cloudfront_private_key.pem)" --overwrite
 ```
 
 Notes:
@@ -76,19 +77,20 @@ Notes:
 - The SAM template currently uses `{{resolve:ssm:...}}` for the public key, so the public key parameter must be a plain `String` (not `SecureString`) unless you update the template to use `ssm-secure`.
 - If you change the parameter names, pass them as SAM parameters (`CloudFrontPublicKeySsmName` / `CloudFrontPrivateKeySsmName`) during deploy.
 
-### 2) Deploy the backend + infrastructure
+### 2. Deploy the backend + infrastructure
 
 `samconfig.toml` is set up for a default stack named `cloudcast` (region `us-west-2`, profile `personal`). You can deploy with:
 
 ```bash
-sam build
-sam deploy
+sam build --profile personal
+sam deploy --profile personal
 ```
 
 Or run a guided deploy and set parameters explicitly:
 
 ```bash
 sam deploy --guided \
+  --profile personal \
   --parameter-overrides \
     Env=dev \
     CorsAllowOrigin=http://localhost:5173 \
@@ -96,7 +98,7 @@ sam deploy --guided \
     CloudFrontPrivateKeySsmName=/cloudcast/dev/cloudfront-private-key
 ```
 
-### 3) Deploy the frontend
+### 3. Deploy the frontend
 
 This script pulls stack outputs (API URL + Cognito IDs + frontend bucket/distribution), builds the frontend, syncs it to S3, and creates a CloudFront invalidation:
 

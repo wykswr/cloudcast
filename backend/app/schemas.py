@@ -9,6 +9,8 @@ class UploadInitRequest(BaseModel):
     title: str | None = None
     size_bytes: int | None = Field(default=None, alias="sizeBytes", ge=0)
     duration_seconds: float | None = Field(default=None, alias="durationSeconds", ge=0)
+    source_width: int | None = Field(default=None, alias="sourceWidth", ge=1)
+    source_height: int | None = Field(default=None, alias="sourceHeight", ge=1)
 
 
 class UploadInitResponse(BaseModel):
@@ -61,6 +63,8 @@ class VideoListItem(BaseModel):
     s3_key_hls: str | None = Field(default=None, alias="s3KeyHls")
     size_bytes: int | None = Field(default=None, alias="sizeBytes")
     duration_seconds: float | None = Field(default=None, alias="durationSeconds")
+    source_width: int | None = Field(default=None, alias="sourceWidth")
+    source_height: int | None = Field(default=None, alias="sourceHeight")
     favorite: bool = False
 
 

@@ -13,9 +13,48 @@
         "processedBucket": "${ProcessedBucketName}",
         "videosTable": "${VideosTableName}"
       },
-      "Next": "CreateMediaConvertJob"
+      "Next": "GetVideoMetadata"
     },
-    "CreateMediaConvertJob": {
+    "GetVideoMetadata": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::dynamodb:getItem",
+      "Arguments": {
+        "TableName": "{% $videosTable %}",
+        "Key": {
+          "user_id": {
+            "S": "{% $userId %}"
+          },
+          "id": {
+            "S": "{% $videoId %}"
+          }
+        },
+        "ProjectionExpression": "source_width, source_height"
+      },
+      "Assign": {
+        "sourceWidth": "{% $exists($states.result.Item.source_width.N) ? $number($states.result.Item.source_width.N) : 0 %}",
+        "sourceHeight": "{% $exists($states.result.Item.source_height.N) ? $number($states.result.Item.source_height.N) : 0 %}"
+      },
+      "Next": "SelectTranscodePolicy"
+    },
+    "SelectTranscodePolicy": {
+      "Type": "Choice",
+      "Choices": [
+        {
+          "Condition": "{% $sourceWidth >= 3840 and $sourceHeight >= 2160 %}",
+          "Next": "Create4kMediaConvertJob"
+        },
+        {
+          "Condition": "{% $sourceWidth >= 2560 and $sourceHeight >= 1440 %}",
+          "Next": "Create2kMediaConvertJob"
+        },
+        {
+          "Condition": "{% $sourceWidth >= 1920 and $sourceHeight >= 1080 %}",
+          "Next": "CreateHdMediaConvertJob"
+        }
+      ],
+      "Default": "CreateSourceNativeMediaConvertJob"
+    },
+    "CreateSourceNativeMediaConvertJob": {
       "Type": "Task",
       "Resource": "arn:aws:states:::mediaconvert:createJob.sync",
       "Arguments": {
@@ -54,21 +93,34 @@
                     "M3u8Settings": {}
                   },
                   "VideoDescription": {
-                    "Width": 1920,
-                    "Height": 1080,
+                    "Width": 3840,
+                    "Height": 2160,
                     "CodecSettings": {
                       "Codec": "H_264",
                       "H264Settings": {
                         "RateControlMode": "QVBR",
-                        "MaxBitrate": 8000000,
-                        "QvbrSettings": {
-                          "QvbrQualityLevel": 8
-                        }
+                        "QualityTuningLevel": "MULTI_PASS_HQ"
                       }
                     }
                   },
+                  "OutputSettings": {
+                    "HlsSettings": {
+                      "AudioGroupId": "program_audio",
+                      "AudioRenditionSets": "program_audio",
+                      "AudioOnlyContainer": "AUTOMATIC",
+                      "IFrameOnlyManifest": "EXCLUDE"
+                    }
+                  },
+                  "NameModifier": "_video"
+                },
+                {
+                  "ContainerSettings": {
+                    "Container": "M3U8",
+                    "M3u8Settings": {}
+                  },
                   "AudioDescriptions": [
                     {
+                      "AudioSourceName": "Audio Selector 1",
                       "CodecSettings": {
                         "Codec": "AAC",
                         "AacSettings": {
@@ -79,9 +131,409 @@
                       }
                     }
                   ],
-                  "NameModifier": "_1080p"
+                  "OutputSettings": {
+                    "HlsSettings": {
+                      "AudioGroupId": "program_audio",
+                      "AudioTrackType": "ALTERNATE_AUDIO_AUTO_SELECT_DEFAULT",
+                      "AudioOnlyContainer": "AUTOMATIC",
+                      "IFrameOnlyManifest": "EXCLUDE"
+                    }
+                  },
+                  "NameModifier": "_audio"
                 }
-              ]
+              ],
+              "AutomatedEncodingSettings": {
+                "AbrSettings": {
+                  "MaxRenditions": 6,
+                  "MaxAbrBitrate": 20000000,
+                  "MinAbrBitrate": 600000
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Assign": {
+        "createJobResult": "{% $states.result %}"
+      },
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "MarkFailed"
+        }
+      ],
+      "Next": "MarkReady"
+    },
+    "CreateHdMediaConvertJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::mediaconvert:createJob.sync",
+      "Arguments": {
+        "Role": "${MediaConvertRoleArn}",
+        "UserMetadata": {
+          "video_id": "{% $videoId %}",
+          "user_id": "{% $userId %}"
+        },
+        "Settings": {
+          "Inputs": [
+            {
+              "FileInput": "{% 's3://' & $bucket & '/' & $key %}",
+              "AudioSelectors": {
+                "Audio Selector 1": {
+                  "DefaultSelection": "DEFAULT"
+                }
+              },
+              "VideoSelector": {}
+            }
+          ],
+          "OutputGroups": [
+            {
+              "Name": "Apple HLS",
+              "OutputGroupSettings": {
+                "Type": "HLS_GROUP_SETTINGS",
+                "HlsGroupSettings": {
+                  "Destination": "{% 's3://' & $processedBucket & '/' & $userId & '/' & $videoId & '/hls/' %}",
+                  "SegmentLength": 4,
+                  "MinSegmentLength": 0
+                }
+              },
+              "Outputs": [
+                {
+                  "ContainerSettings": {
+                    "Container": "M3U8",
+                    "M3u8Settings": {}
+                  },
+                  "VideoDescription": {
+                    "Width": 3840,
+                    "Height": 2160,
+                    "CodecSettings": {
+                      "Codec": "H_264",
+                      "H264Settings": {
+                        "RateControlMode": "QVBR",
+                        "QualityTuningLevel": "MULTI_PASS_HQ"
+                      }
+                    }
+                  },
+                  "OutputSettings": {
+                    "HlsSettings": {
+                      "AudioGroupId": "program_audio",
+                      "AudioRenditionSets": "program_audio",
+                      "AudioOnlyContainer": "AUTOMATIC",
+                      "IFrameOnlyManifest": "EXCLUDE"
+                    }
+                  },
+                  "NameModifier": "_video"
+                },
+                {
+                  "ContainerSettings": {
+                    "Container": "M3U8",
+                    "M3u8Settings": {}
+                  },
+                  "AudioDescriptions": [
+                    {
+                      "AudioSourceName": "Audio Selector 1",
+                      "CodecSettings": {
+                        "Codec": "AAC",
+                        "AacSettings": {
+                          "Bitrate": 128000,
+                          "CodingMode": "CODING_MODE_2_0",
+                          "SampleRate": 48000
+                        }
+                      }
+                    }
+                  ],
+                  "OutputSettings": {
+                    "HlsSettings": {
+                      "AudioGroupId": "program_audio",
+                      "AudioTrackType": "ALTERNATE_AUDIO_AUTO_SELECT_DEFAULT",
+                      "AudioOnlyContainer": "AUTOMATIC",
+                      "IFrameOnlyManifest": "EXCLUDE"
+                    }
+                  },
+                  "NameModifier": "_audio"
+                }
+              ],
+              "AutomatedEncodingSettings": {
+                "AbrSettings": {
+                  "MaxRenditions": 6,
+                  "MaxAbrBitrate": 20000000,
+                  "MinAbrBitrate": 600000,
+                  "Rules": [
+                    {
+                      "Type": "MIN_TOP_RENDITION_SIZE",
+                      "MinTopRenditionSize": {
+                        "Width": 1920,
+                        "Height": 1080
+                      }
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Assign": {
+        "createJobResult": "{% $states.result %}"
+      },
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "MarkFailed"
+        }
+      ],
+      "Next": "MarkReady"
+    },
+    "Create2kMediaConvertJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::mediaconvert:createJob.sync",
+      "Arguments": {
+        "Role": "${MediaConvertRoleArn}",
+        "UserMetadata": {
+          "video_id": "{% $videoId %}",
+          "user_id": "{% $userId %}"
+        },
+        "Settings": {
+          "Inputs": [
+            {
+              "FileInput": "{% 's3://' & $bucket & '/' & $key %}",
+              "AudioSelectors": {
+                "Audio Selector 1": {
+                  "DefaultSelection": "DEFAULT"
+                }
+              },
+              "VideoSelector": {}
+            }
+          ],
+          "OutputGroups": [
+            {
+              "Name": "Apple HLS",
+              "OutputGroupSettings": {
+                "Type": "HLS_GROUP_SETTINGS",
+                "HlsGroupSettings": {
+                  "Destination": "{% 's3://' & $processedBucket & '/' & $userId & '/' & $videoId & '/hls/' %}",
+                  "SegmentLength": 4,
+                  "MinSegmentLength": 0
+                }
+              },
+              "Outputs": [
+                {
+                  "ContainerSettings": {
+                    "Container": "M3U8",
+                    "M3u8Settings": {}
+                  },
+                  "VideoDescription": {
+                    "Width": 3840,
+                    "Height": 2160,
+                    "CodecSettings": {
+                      "Codec": "H_264",
+                      "H264Settings": {
+                        "RateControlMode": "QVBR",
+                        "QualityTuningLevel": "MULTI_PASS_HQ"
+                      }
+                    }
+                  },
+                  "OutputSettings": {
+                    "HlsSettings": {
+                      "AudioGroupId": "program_audio",
+                      "AudioRenditionSets": "program_audio",
+                      "AudioOnlyContainer": "AUTOMATIC",
+                      "IFrameOnlyManifest": "EXCLUDE"
+                    }
+                  },
+                  "NameModifier": "_video"
+                },
+                {
+                  "ContainerSettings": {
+                    "Container": "M3U8",
+                    "M3u8Settings": {}
+                  },
+                  "AudioDescriptions": [
+                    {
+                      "AudioSourceName": "Audio Selector 1",
+                      "CodecSettings": {
+                        "Codec": "AAC",
+                        "AacSettings": {
+                          "Bitrate": 128000,
+                          "CodingMode": "CODING_MODE_2_0",
+                          "SampleRate": 48000
+                        }
+                      }
+                    }
+                  ],
+                  "OutputSettings": {
+                    "HlsSettings": {
+                      "AudioGroupId": "program_audio",
+                      "AudioTrackType": "ALTERNATE_AUDIO_AUTO_SELECT_DEFAULT",
+                      "AudioOnlyContainer": "AUTOMATIC",
+                      "IFrameOnlyManifest": "EXCLUDE"
+                    }
+                  },
+                  "NameModifier": "_audio"
+                }
+              ],
+              "AutomatedEncodingSettings": {
+                "AbrSettings": {
+                  "MaxRenditions": 6,
+                  "MaxAbrBitrate": 20000000,
+                  "MinAbrBitrate": 600000,
+                  "Rules": [
+                    {
+                      "Type": "MIN_TOP_RENDITION_SIZE",
+                      "MinTopRenditionSize": {
+                        "Width": 1920,
+                        "Height": 1080
+                      }
+                    },
+                    {
+                      "Type": "FORCE_INCLUDE_RENDITIONS",
+                      "ForceIncludeRenditions": [
+                        {
+                          "Width": 2560,
+                          "Height": 1440
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
+            }
+          ]
+        }
+      },
+      "Assign": {
+        "createJobResult": "{% $states.result %}"
+      },
+      "Catch": [
+        {
+          "ErrorEquals": [
+            "States.ALL"
+          ],
+          "Next": "MarkFailed"
+        }
+      ],
+      "Next": "MarkReady"
+    },
+    "Create4kMediaConvertJob": {
+      "Type": "Task",
+      "Resource": "arn:aws:states:::mediaconvert:createJob.sync",
+      "Arguments": {
+        "Role": "${MediaConvertRoleArn}",
+        "UserMetadata": {
+          "video_id": "{% $videoId %}",
+          "user_id": "{% $userId %}"
+        },
+        "Settings": {
+          "Inputs": [
+            {
+              "FileInput": "{% 's3://' & $bucket & '/' & $key %}",
+              "AudioSelectors": {
+                "Audio Selector 1": {
+                  "DefaultSelection": "DEFAULT"
+                }
+              },
+              "VideoSelector": {}
+            }
+          ],
+          "OutputGroups": [
+            {
+              "Name": "Apple HLS",
+              "OutputGroupSettings": {
+                "Type": "HLS_GROUP_SETTINGS",
+                "HlsGroupSettings": {
+                  "Destination": "{% 's3://' & $processedBucket & '/' & $userId & '/' & $videoId & '/hls/' %}",
+                  "SegmentLength": 4,
+                  "MinSegmentLength": 0
+                }
+              },
+              "Outputs": [
+                {
+                  "ContainerSettings": {
+                    "Container": "M3U8",
+                    "M3u8Settings": {}
+                  },
+                  "VideoDescription": {
+                    "Width": 3840,
+                    "Height": 2160,
+                    "CodecSettings": {
+                      "Codec": "H_264",
+                      "H264Settings": {
+                        "RateControlMode": "QVBR",
+                        "QualityTuningLevel": "MULTI_PASS_HQ"
+                      }
+                    }
+                  },
+                  "OutputSettings": {
+                    "HlsSettings": {
+                      "AudioGroupId": "program_audio",
+                      "AudioRenditionSets": "program_audio",
+                      "AudioOnlyContainer": "AUTOMATIC",
+                      "IFrameOnlyManifest": "EXCLUDE"
+                    }
+                  },
+                  "NameModifier": "_video"
+                },
+                {
+                  "ContainerSettings": {
+                    "Container": "M3U8",
+                    "M3u8Settings": {}
+                  },
+                  "AudioDescriptions": [
+                    {
+                      "AudioSourceName": "Audio Selector 1",
+                      "CodecSettings": {
+                        "Codec": "AAC",
+                        "AacSettings": {
+                          "Bitrate": 128000,
+                          "CodingMode": "CODING_MODE_2_0",
+                          "SampleRate": 48000
+                        }
+                      }
+                    }
+                  ],
+                  "OutputSettings": {
+                    "HlsSettings": {
+                      "AudioGroupId": "program_audio",
+                      "AudioTrackType": "ALTERNATE_AUDIO_AUTO_SELECT_DEFAULT",
+                      "AudioOnlyContainer": "AUTOMATIC",
+                      "IFrameOnlyManifest": "EXCLUDE"
+                    }
+                  },
+                  "NameModifier": "_audio"
+                }
+              ],
+              "AutomatedEncodingSettings": {
+                "AbrSettings": {
+                  "MaxRenditions": 6,
+                  "MaxAbrBitrate": 20000000,
+                  "MinAbrBitrate": 600000,
+                  "Rules": [
+                    {
+                      "Type": "MIN_TOP_RENDITION_SIZE",
+                      "MinTopRenditionSize": {
+                        "Width": 1920,
+                        "Height": 1080
+                      }
+                    },
+                    {
+                      "Type": "FORCE_INCLUDE_RENDITIONS",
+                      "ForceIncludeRenditions": [
+                        {
+                          "Width": 2560,
+                          "Height": 1440
+                        },
+                        {
+                          "Width": 3840,
+                          "Height": 2160
+                        }
+                      ]
+                    }
+                  ]
+                }
+              }
             }
           ]
         }

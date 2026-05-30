@@ -41,6 +41,16 @@ class UploadService:
                     "video_id": video_id,
                     "user_id": user.id,
                     "title": payload.title or payload.filename,
+                    **(
+                        {"source_width": str(payload.source_width)}
+                        if payload.source_width is not None
+                        else {}
+                    ),
+                    **(
+                        {"source_height": str(payload.source_height)}
+                        if payload.source_height is not None
+                        else {}
+                    ),
                 },
             )
         except ClientError as exc:
@@ -61,6 +71,8 @@ class UploadService:
             created_at=created_at,
             size_bytes=payload.size_bytes,
             duration_seconds=payload.duration_seconds,
+            source_width=payload.source_width,
+            source_height=payload.source_height,
         )
 
         return upload_id, video_id

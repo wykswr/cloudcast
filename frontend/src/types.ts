@@ -15,6 +15,8 @@ export type VideoItem = {
   s3KeyHls?: string | null
   sizeBytes?: number | null
   durationSeconds?: number | null
+  sourceWidth?: number | null
+  sourceHeight?: number | null
   favorite?: boolean
 }
 
