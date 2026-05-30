@@ -146,6 +146,8 @@ class VideoRepository:
         created_at: int,
         size_bytes: int | None = None,
         duration_seconds: float | None = None,
+        source_width: int | None = None,
+        source_height: int | None = None,
     ) -> None:
         item: dict[str, Any] = {
             "user_id": user_id,
@@ -163,6 +165,10 @@ class VideoRepository:
             # DynamoDB stores numbers as Decimal; round to whole seconds to avoid
             # float-precision serialization issues.
             item["duration_seconds"] = int(duration_seconds)
+        if source_width is not None:
+            item["source_width"] = source_width
+        if source_height is not None:
+            item["source_height"] = source_height
 
         try:
             self.videos_table.put_item(Item=item)

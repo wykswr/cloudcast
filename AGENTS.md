@@ -6,7 +6,7 @@ This file provides repository-specific guidance for OpenAI Codex and other codin
 
 CloudCast is an AWS-backed video hosting proof of concept. Users authenticate with Cognito, upload large videos through S3 multipart upload, raw files trigger a Step Functions -> MediaConvert transcode to HLS, and playback is served from CloudFront using signed URLs.
 
-For deeper context, see `ARCHITECTURE.md` and `DESIGN.md`.
+For deeper context, see `docs/ARCHITECTURE.md` and `docs/DESIGN.md`.
 
 ## Commands
 

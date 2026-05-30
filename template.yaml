@@ -255,6 +255,7 @@ Resources:
                 - !GetAtt MediaConvertRole.Arn
             - Effect: Allow
               Action:
+                - dynamodb:GetItem
                 - dynamodb:UpdateItem
               Resource:
                 - !GetAtt VideosTable.Arn

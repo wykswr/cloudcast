@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## What this is
 
-CloudCast is an AWS-backed video hosting PoC. Users authenticate with Cognito, upload large videos via S3 multipart upload, the raw file triggers a Step Functions → MediaConvert transcode to HLS, and playback is served from CloudFront using signed URLs. Deep dives live in `ARCHITECTURE.md` and `DESIGN.md`.
+CloudCast is an AWS-backed video hosting PoC. Users authenticate with Cognito, upload large videos via S3 multipart upload, the raw file triggers a Step Functions → MediaConvert transcode to HLS, and playback is served from CloudFront using signed URLs. Deep dives live in `docs/ARCHITECTURE.md` and `docs/DESIGN.md`.
 
 ## Commands
 

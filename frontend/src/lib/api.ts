@@ -59,6 +59,8 @@ export type UploadInitRequest = {
   title: string
   sizeBytes?: number
   durationSeconds?: number
+  sourceWidth?: number
+  sourceHeight?: number
 }
 
 export type UploadInitResponse = {

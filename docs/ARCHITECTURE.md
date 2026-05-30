@@ -203,7 +203,7 @@ S3 Raw Bucket                    EventBridge                   Step Functions
 
 - **Input:** Original video from raw bucket
 - **Output:** HLS playlist (`.m3u8`) + segments (`.ts`) to processed bucket
-- **Settings:** H.264 video codec, AAC audio, 1080p @ QVBR quality level 7
+- **Settings:** H.264 Automated ABR capped at 4K (`3840x2160`), up to 6 renditions, 600 kb/s-20 Mb/s average ABR range, QVBR + multi-pass HQ, AAC stereo audio at 128 kb/s. The frontend records source dimensions at upload time; Step Functions uses them to keep sub-1080p sources source-native, require a 1080p top rendition for 1080p-or-higher sources, force a 1440p rendition for 2K-or-higher sources, and force a 2160p rendition for 4K sources.
 
 ### 3. Playback Flow (Secure Streaming)
 
@@ -237,8 +237,9 @@ S3 Raw Bucket                    EventBridge                   Step Functions
 
 ```
 cloudcast/
-├── DESIGN.md              # Product design document
-├── ARCHITECTURE.md        # This file
+├── docs/
+│   ├── DESIGN.md          # Product design document
+│   └── ARCHITECTURE.md    # This file
 │
 ├── backend/               # FastAPI application
 │   ├── main.py           # App entry point, route definitions
