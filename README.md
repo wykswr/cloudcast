@@ -22,13 +22,17 @@ CloudCast is a full-stack, AWS-backed video hosting PoC: users authenticate with
 
 ## Local development
 
+
+### AWS profile
+The SAM template and deploy script use the `personal` AWS CLI profile by default.
+
 ### Backend (FastAPI)
 
 ```bash
 cd backend
 cp .env.example .env
 uv sync
-uv uvicorn main:app --reload
+uv run uvicorn main:app --reload
 ```
 
 The backend reads configuration from environment variables (see `backend/app/config.py`) and supports optional `DYNAMODB_ENDPOINT_URL` / `S3_ENDPOINT_URL` for local emulators.
