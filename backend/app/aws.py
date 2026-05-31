@@ -23,3 +23,7 @@ def create_dynamodb_resource(settings: Settings):
     if endpoint:
         kwargs["endpoint_url"] = endpoint
     return boto3.resource("dynamodb", **kwargs)
+
+
+def create_ssm_client(settings: Settings):
+    return boto3.client("ssm", region_name=settings.aws_region)

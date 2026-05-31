@@ -3,12 +3,12 @@ import time
 import urllib.request
 from typing import Annotated, Any
 
-from fastapi import Depends, HTTPException, status
+from fastapi import Depends, HTTPException, Request, status
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 from jose import jwt
 from pydantic import BaseModel
 
-from .container import AppContainer, get_app_container
+from .config import Settings, get_settings
 
 http_bearer = HTTPBearer(auto_error=False)
 
@@ -98,9 +98,22 @@ class CognitoTokenVerifier:
 
 
 def get_token_verifier(
-    container: AppContainer = Depends(get_app_container),
+    request: Request,
+    settings: Settings = Depends(get_settings),
 ) -> CognitoTokenVerifier:
-    return container.token_verifier
+    # Holds a process-lived JWKS cache, so it must outlive a single request.
+    # Built lazily on first use and memoized on app.state rather than pre-built
+    # in the lifespan.
+    verifier = getattr(request.app.state, "token_verifier", None)
+    if verifier is None:
+        verifier = CognitoTokenVerifier(
+            region=settings.aws_region,
+            user_pool_id=settings.cognito_user_pool_id,
+            client_id=settings.cognito_client_id,
+            ttl_seconds=settings.jwks_cache_seconds,
+        )
+        request.app.state.token_verifier = verifier
+    return verifier
 
 
 def get_current_user(

@@ -1,35 +1,76 @@
-from typing import Annotated
+from typing import Annotated, Any
 
-from fastapi import Depends
+from fastapi import Depends, Request
 
-from app.container import AppContainer, get_app_container
+from app.config import Settings, get_settings
+from app.resources import AppResources, get_app_resources
 from app.services.cloudfront import CloudFrontURLSigner
 from app.services.uploads import UploadService
 from app.services.videos import VideoRepository, VideoService
 
 
+# --- raw resources (lifespan singletons) -----------------------------------
+
+
+def get_s3_client(resources: AppResources = Depends(get_app_resources)) -> Any:
+    return resources.s3_client
+
+
+def get_dynamodb_resource(
+    resources: AppResources = Depends(get_app_resources),
+) -> Any:
+    return resources.dynamodb_resource
+
+
+def get_ssm_client(resources: AppResources = Depends(get_app_resources)) -> Any:
+    return resources.ssm_client
+
+
+# --- per-request services assembled from resources --------------------------
+#
+# These constructors are cheap (no I/O), so building them per request is free;
+# FastAPI caches each provider within a single request, so the repository is
+# shared by the upload and video services on the same request.
+
+
 def get_video_repository(
-    container: AppContainer = Depends(get_app_container),
+    dynamodb_resource: Any = Depends(get_dynamodb_resource),
+    settings: Settings = Depends(get_settings),
 ) -> VideoRepository:
-    return container.video_repository
+    return VideoRepository(dynamodb_resource, settings)
 
 
 def get_upload_service(
-    container: AppContainer = Depends(get_app_container),
+    s3_client: Any = Depends(get_s3_client),
+    repository: VideoRepository = Depends(get_video_repository),
+    settings: Settings = Depends(get_settings),
 ) -> UploadService:
-    return container.upload_service
+    return UploadService(s3_client, repository, settings)
 
 
 def get_video_service(
-    container: AppContainer = Depends(get_app_container),
+    repository: VideoRepository = Depends(get_video_repository),
+    settings: Settings = Depends(get_settings),
+    s3_client: Any = Depends(get_s3_client),
 ) -> VideoService:
-    return container.video_service
+    return VideoService(repository, settings, s3_client)
+
+
+# --- stateful singleton: caches the RSA key loaded from SSM on construction,
+# so it must persist across requests. Built lazily on first use and memoized on
+# app.state rather than pre-built in the lifespan.
 
 
 def get_stream_signer(
-    container: AppContainer = Depends(get_app_container),
+    request: Request,
+    settings: Settings = Depends(get_settings),
+    ssm_client: Any = Depends(get_ssm_client),
 ) -> CloudFrontURLSigner:
-    return container.stream_signer
+    signer = getattr(request.app.state, "stream_signer", None)
+    if signer is None:
+        signer = CloudFrontURLSigner(settings, ssm_client)
+        request.app.state.stream_signer = signer
+    return signer
 
 
 UploadServiceDep = Annotated[UploadService, Depends(get_upload_service)]

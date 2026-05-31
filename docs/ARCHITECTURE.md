@@ -242,15 +242,19 @@ cloudcast/
 │   └── ARCHITECTURE.md    # This file
 │
 ├── backend/               # FastAPI application
-│   ├── main.py           # App entry point, route definitions
+│   ├── main.py           # App factory + lifespan (builds AWS SDK singletons)
 │   ├── lambda_handler.py # Lambda entry point (Mangum adapter)
 │   ├── pyproject.toml    # Python dependencies (uv/pip)
 │   ├── requirements.txt  # SAM build dependencies
 │   └── app/
-│       ├── auth.py       # Cognito JWT verification
-│       ├── aws.py        # boto3 client factories
+│       ├── auth.py       # Cognito JWT verification + token-verifier provider
+│       ├── aws.py        # boto3 client/resource factories
 │       ├── config.py     # Pydantic settings (env vars)
+│       ├── resources.py  # AppResources dataclass (lifespan-held singletons)
 │       ├── schemas.py    # Request/response Pydantic models
+│       ├── api/
+│       │   ├── dependencies.py # Depends providers (assemble services per request)
+│       │   └── routes/         # APIRouters (health, videos)
 │       └── services/
 │           ├── uploads.py    # Multipart upload orchestration
 │           ├── videos.py     # DynamoDB repository + service
@@ -445,7 +449,7 @@ Authorization: Bearer <Cognito ID Token>
 | `COGNITO_REGION`             | Cognito region                           |
 | `CLOUDFRONT_DOMAIN`          | CloudFront distribution domain           |
 | `CLOUDFRONT_KEY_ID`          | CloudFront key pair ID                   |
-| `CLOUDFRONT_PRIVATE_KEY`     | RSA private key (inline or path)         |
+| `CLOUDFRONT_PRIVATE_KEY_SSM_NAME` | SSM parameter holding the RSA private key (loaded via the shared SSM client) |
 
 ### Frontend Environment Variables
 

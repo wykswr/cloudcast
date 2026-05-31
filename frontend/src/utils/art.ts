@@ -24,6 +24,6 @@ export function videoArt(id: string): { gradient: string; emoji: string } {
   const h = hash(id)
   return {
     gradient: GRADIENTS[h % GRADIENTS.length],
-    emoji: EMOJI[(h >> 3) % EMOJI.length],
+    emoji: EMOJI[(h >>> 3) % EMOJI.length],
   }
 }
