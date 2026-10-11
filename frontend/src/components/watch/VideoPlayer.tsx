@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import Hls from 'hls.js'
 import type {
   HlsConfig,
@@ -6,6 +6,7 @@ import type {
   LoaderConfiguration,
   LoaderCallbacks,
 } from 'hls.js'
+import TouchControls from './TouchControls'
 
 type VideoPlayerProps = {
   src: string
@@ -32,12 +33,41 @@ function formatQuality(width?: number, height?: number, bitrate?: number): Playb
   }
 }
 
+const TOUCH_QUERY = '(hover: none) and (pointer: coarse)'
+
+function subscribeTouch(onChange: () => void) {
+  const query = window.matchMedia(TOUCH_QUERY)
+  query.addEventListener('change', onChange)
+  return () => query.removeEventListener('change', onChange)
+}
+
+function useIsTouchDevice() {
+  return useSyncExternalStore(
+    subscribeTouch,
+    () => window.matchMedia(TOUCH_QUERY).matches,
+    () => false,
+  )
+}
+
 /**
  * HLS player that re-attaches CloudFront signed query params to every request
  * (master manifest, variant playlists, segments) so key-group validation passes.
  */
 function VideoPlayer({ src }: VideoPlayerProps) {
   const videoRef = useRef<HTMLVideoElement | null>(null)
+  const frameRef = useRef<HTMLDivElement | null>(null)
+  const isTouch = useIsTouchDevice()
+  const [pseudoFullscreen, setPseudoFullscreen] = useState(false)
+
+  // iOS paints the safe-area insets (notch, home bar) with the page background, so match the
+  // player while it covers the viewport.
+  useEffect(() => {
+    if (!pseudoFullscreen) return
+    const targets = [document.documentElement, document.body]
+    const previous = targets.map((el) => el.style.backgroundColor)
+    targets.forEach((el) => (el.style.backgroundColor = '#000'))
+    return () => targets.forEach((el, i) => (el.style.backgroundColor = previous[i]))
+  }, [pseudoFullscreen])
   const [quality, setQuality] = useState<PlaybackQuality>({ label: 'Auto' })
 
   useEffect(() => {
@@ -111,11 +141,26 @@ function VideoPlayer({ src }: VideoPlayerProps) {
           <span className="hidden font-medium text-white/65 sm:inline">{quality.detail}</span>
         ) : null}
       </div>
-      <video
-        ref={videoRef}
-        controls
-        className="aspect-video w-full rounded-[14px] bg-black"
-      />
+      <div
+        ref={frameRef}
+        data-fullscreen={pseudoFullscreen || undefined}
+        className="relative overflow-hidden rounded-[14px] bg-black data-fullscreen:fixed data-fullscreen:inset-0 data-fullscreen:z-40 [&:fullscreen,&[data-fullscreen]]:grid [&:fullscreen,&[data-fullscreen]]:place-items-center [&:fullscreen,&[data-fullscreen]]:rounded-none"
+      >
+        <video
+          ref={videoRef}
+          controls={!isTouch}
+          playsInline
+          className="block aspect-video w-full bg-black [:is(:fullscreen,[data-fullscreen])>&]:h-full [:is(:fullscreen,[data-fullscreen])>&]:aspect-auto [:is(:fullscreen,[data-fullscreen])>&]:object-contain"
+        />
+        {isTouch ? (
+          <TouchControls
+            videoRef={videoRef}
+            fullscreenRef={frameRef}
+            pseudoFullscreen={pseudoFullscreen}
+            onPseudoFullscreenChange={setPseudoFullscreen}
+          />
+        ) : null}
+      </div>
     </div>
   )
 }
