@@ -21,7 +21,7 @@ Parameters:
 
 Globals:
   Function:
-    Runtime: python3.13
+    Runtime: nodejs24.x
     Architectures:
       - x86_64
     MemorySize: 512
@@ -49,10 +49,12 @@ Resources:
 
   BackendFunction:
     Type: AWS::Serverless::Function
+    Metadata:
+      SkipBuild: true
     Properties:
-      CodeUri: backend/
-      Handler: lambda_handler.handler
-      Description: CloudCast API powered by FastAPI
+      CodeUri: backend/dist/
+      Handler: lambda.handler
+      Description: CloudCast API powered by Hono
       Policies:
         - DynamoDBCrudPolicy:
             TableName: !Ref VideosTable

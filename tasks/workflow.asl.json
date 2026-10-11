@@ -573,7 +573,7 @@
             "S": "ready"
           },
           ":hls": {
-            "S": "{% $userId & '/' & $videoId & '/hls/' & $substringBefore($split($key, '/')[3], '.') & '.m3u8' %}"
+            "S": "{% $userId & '/' & $videoId & '/hls/' & $replace($split($key, '/')[-1], /\\.[^.]*$/, '') & '.m3u8' %}"
           }
         }
       },

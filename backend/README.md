@@ -1,55 +1,58 @@
-# CloudCast Backend (FastAPI)
+# CloudCast Backend (Hono)
 
-FastAPI service that powers CloudCast multipart uploads, video metadata storage in DynamoDB, and signed playback URLs through CloudFront.
+TypeScript API for multipart uploads, DynamoDB video metadata, Cognito authentication, and CloudFront signed playback. Node.js 24 and pnpm are required.
 
-## Features
-- Cognito JWT verification for all routes (ID or Access tokens).
-- Multipart upload orchestration: init, presigned URLs per part, and completion.
-- Video metadata persistence in DynamoDB with a `VideoIdIndex` GSI.
-- CloudFront signed URLs for secure HLS playback.
-- Simple `/health` endpoint for load balancers.
+## Development and checks
 
-## Configuration
-The app uses environment variables (via `pydantic-settings`). Typical `.env`:
+From the repository root:
 
-```env
-AWS_REGION=us-east-1
-
-RAW_UPLOADS_BUCKET=raw-uploads-bucket-name
-PROCESSED_VIDEOS_BUCKET=processed-videos-bucket-name
-VIDEOS_TABLE=Videos
-USERS_TABLE=Users
-VIDEO_ID_INDEX=VideoIdIndex
-
-COGNITO_REGION=us-east-1
-COGNITO_USER_POOL_ID=us-east-1_abc123
-COGNITO_CLIENT_ID=your_client_id
-
-CLOUDFRONT_DOMAIN=dxxxx.cloudfront.net
-CLOUDFRONT_KEY_ID=APKAXXXXX
-# Either provide an inline PEM or a path to the key file
-CLOUDFRONT_PRIVATE_KEY_PATH=/secure/path/cloudfront_private_key.pem
-# CLOUDFRONT_PRIVATE_KEY="-----BEGIN RSA PRIVATE KEY-----\n..."
-
-MULTIPART_URL_EXPIRATION_SECONDS=3600
-STREAM_URL_TTL_MINUTES=60
-```
-
-## Running Locally
 ```bash
-cd backend
-uv pip install -e .
-uvicorn main:app --reload
+pnpm install --frozen-lockfile
+cp backend/.env.example backend/.env
+AWS_PROFILE=personal pnpm dev:backend
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build:sam
 ```
 
-Use an Authorization header (`Bearer <token>`) from Cognito/Amplify for all `/videos/*` routes.
+The local server listens on port 8000. `pnpm dev` runs both backend and frontend. Configuration is validated in `src/config.ts`; dotenv loads the local `.env`. Lambda uses the same configuration fields from its environment. Emulator overrides are `DYNAMODB_ENDPOINT_URL` and `S3_ENDPOINT_URL`. Default region remains `us-east-1` for local configuration; SAM injects its deployment region (`us-west-2`).
 
-## API Surface
-- `POST /videos/upload/init` → `{ uploadId, videoId }`
-- `POST /videos/upload/sign-part` → `{ presignedUrl }`
-- `POST /videos/upload/complete` → `{ status: "processing" }`
-- `GET /videos` → `{ items: [...] }`
-- `GET /videos/{video_id}/stream` → `{ streamUrl }`
-- `GET /health` → `{ status: "ok" }`
+`createContainer()` builds clients and services; `createApp(container)` injects them into route factories. `src/lambda.ts` caches the official Hono adapter and container for warm invocations. The CloudFront RSA key is decrypted from SSM on first playback signing and cached; failed loads can be retried.
 
-The raw upload key pattern is `<user_id>/<video_id>/raw/<filename>`; the HLS output is expected at `<user_id>/<video_id>/hls/playlist.m3u8` (updated to the final path by the processing pipeline).
+## API
+
+| Endpoint | Response | Authorization |
+| --- | --- | --- |
+| `GET /health` | `{ status: "ok" }` | Public locally |
+| `GET /videos` | `{ items: [...] }` | Cognito user |
+| `POST /videos/upload/init` | `{ uploadId, videoId }` | Admin |
+| `POST /videos/upload/sign-part` | `{ presignedUrl }` | Admin |
+| `POST /videos/upload/complete` | `{ status: "processing" }` | Admin |
+| `PATCH /videos/{videoId}` | Updated video | Admin + owner |
+| `DELETE /videos/{videoId}` | `{ status: "deleted" }` | Admin + owner |
+| `GET /videos/{videoId}/stream` | `{ streamUrl }` | Admin + owner; ready video |
+
+Swagger UI: `/docs`. ReDoc: `/redoc`. Generated OpenAPI: `/openapi.json`. API Gateway retains its default Cognito authorizer, including health/documentation paths. Documentation links use relative URLs so `/dev/docs` loads `/dev/openapi.json`.
+
+Schemas and inferred types are shared through `@cloudcast/contracts`. Responses use camelCase with explicit nullable metadata fields. Legacy snake_case request aliases are accepted; camelCase takes precedence. Validation failures return 422 with a `detail` string; service errors retain their existing status codes and detail messages. DynamoDB attributes remain snake_case.
+
+Raw keys are `{user_id}/{video_id}/raw/{filename}`. The HLS key is `{user_id}/{video_id}/hls/{stem}.m3u8`, removing only the final filename extension. Backend and JSONata workflow naming are tested together. Existing records need no migration.
+
+## Build and deployment
+
+`pnpm build:backend` typechecks and bundles all Lambda/workspace dependencies into `dist/lambda.mjs` with a source map. SAM uses runtime `nodejs24.x`, handler `lambda.handler`, and the prebuilt directory with `SkipBuild: true`. Use `pnpm deploy:backend` to rebuild and deploy the shared SAM stack, including the processing workflow. `pnpm build:sam` only builds; a bare SAM build does not compile TypeScript.
+
+## Deployment smoke test
+
+After an authorized deployment, verify:
+
+1. Sign in as an ordinary user and list videos; confirm upload/write/playback routes reject that user with 403.
+2. Sign in as an admin and upload a small video named `holiday.final.mp4`; include source dimensions and verify upload progress.
+3. Confirm the video moves from uploading to processing to ready (or failed on a transcode failure), and the HLS manifest keeps `holiday.final` in its name.
+4. Play the video and seek; confirm variant playlists and segments retain the CloudFront signed parameters.
+5. Rename the video, toggle favorite on/off, refresh, and confirm persistence.
+6. Delete it; confirm it disappears, media objects are removed, and reserved storage is reconciled.
+7. Request another owner's video and confirm a 404. Exercise the documentation using authenticated requests through the deployed API stage.
+
+Local Vitest tests mock AWS services and use generated signing keys. Live Cognito/S3/MediaConvert/CloudFront behavior remains unverified until the deployed smoke test runs.

@@ -1,3 +1,0 @@
-"""
-CloudCast FastAPI backend package.
-"""
