@@ -28,7 +28,7 @@ CloudCast is a serverless-style video hosting platform that enables:
 | Layer          | Technology                                      |
 |----------------|------------------------------------------------|
 | Frontend       | React 19, TypeScript, Vite, Tailwind CSS, hls.js |
-| Backend API    | FastAPI (Python), boto3                         |
+| Backend API    | Hono (TypeScript), AWS SDK v3                   |
 | Authentication | AWS Cognito (User Pools) + AWS Amplify SDK      |
 | Storage        | Amazon S3 (raw + processed buckets)             |
 | Database       | Amazon DynamoDB                                 |
@@ -57,7 +57,7 @@ CloudCast is a serverless-style video hosting platform that enables:
 ┌─────────────────────────────────────────────────────────────────────────────────┐
 │                                  BACKEND API                                     │
 │  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │  FastAPI Server                                                          │    │
+│  │  Hono Server                                                             │    │
 │  │  ├── JWT Verification (Cognito JWKS)                                    │    │
 │  │  ├── Upload Service (S3 multipart orchestration)                        │    │
 │  │  ├── Video Service (DynamoDB CRUD)                                      │    │
@@ -241,23 +241,28 @@ cloudcast/
 │   ├── DESIGN.md          # Product design document
 │   └── ARCHITECTURE.md    # This file
 │
-├── backend/               # FastAPI application
-│   ├── main.py           # App entry point, route definitions
-│   ├── lambda_handler.py # Lambda entry point (Mangum adapter)
-│   ├── pyproject.toml    # Python dependencies (uv/pip)
-│   ├── requirements.txt  # SAM build dependencies
-│   └── app/
-│       ├── auth.py       # Cognito JWT verification
-│       ├── aws.py        # boto3 client factories
-│       ├── config.py     # Pydantic settings (env vars)
-│       ├── schemas.py    # Request/response Pydantic models
-│       └── services/
-│           ├── uploads.py    # Multipart upload orchestration
-│           ├── videos.py     # DynamoDB repository + service
-│           └── cloudfront.py # RSA URL signing
+├── backend/               # TypeScript Hono application
+│   ├── package.json       # Backend dependencies and commands
+│   ├── scripts/build.mjs  # Self-contained Lambda esbuild bundle
+│   ├── test/              # Vitest API, auth, AWS, signing, and workflow tests
+│   └── src/
+│       ├── app.ts         # Injected app factory and documentation
+│       ├── server.ts      # Node.js local entry point (:8000)
+│       ├── lambda.ts      # Cached official Hono Lambda adapter
+│       ├── container.ts   # Client/service dependency wiring
+│       ├── auth.ts        # Cognito JWT verification (jose)
+│       ├── aws.ts         # AWS SDK v3 client factories
+│       ├── config.ts      # Zod settings (environment variables)
+│       ├── routes/        # OpenAPI routes and authorization
+│       └── services/      # Upload, video repository, CloudFront signing
+│
+├── packages/contracts/    # Shared Zod API schemas and TypeScript types
+├── package.json           # Workspace development, checks, and SAM build
+├── pnpm-workspace.yaml    # Frontend, backend, and contracts workspace
+├── pnpm-lock.yaml         # Single dependency lockfile
 │
 ├── frontend/              # React SPA
-│   ├── package.json      # npm dependencies
+│   ├── package.json      # pnpm workspace dependencies
 │   ├── vite.config.ts    # Vite build configuration
 │   └── src/
 │       ├── main.tsx      # App bootstrap + Amplify init
@@ -267,10 +272,9 @@ cloudcast/
 │
 ├── template.yaml          # CloudCast SAM full-stack template
 ├── samconfig.toml         # SAM deployment configuration
-├── deploy_frontend.sh     # Helper to publish frontend to S3/CloudFront
+├── scripts/               # Node SAM/CloudFront deployment tooling
 └── tasks/                 # Supporting assets for SAM
-    ├── workflow.asl.json # Step Functions definition (ASL + JSONata)
-    └── samconfig.toml    # SAM deployment configuration
+    └── workflow.asl.json # Step Functions definition (ASL + JSONata)
 ```
 
 ---
@@ -404,7 +408,7 @@ Authorization: Bearer <Cognito ID Token>
                                                 │
                                                 ▼
                                         ┌─────────────┐
-                                        │   FastAPI   │
+                                        │   Hono      │
                                         │   (JWKS)    │
                                         └─────────────┘
 ```
@@ -464,32 +468,29 @@ Authorization: Bearer <Cognito ID Token>
 
 - AWS CLI configured with appropriate credentials
 - AWS SAM CLI installed
-- Node.js 18+ and npm
-- Python 3.11+ and uv (or pip)
+- Node.js 24 and pnpm 11.25.0
 
 ### Deploy Infrastructure
 
 ```bash
-cd tasks
-sam build
-sam deploy --guided  # First time
-sam deploy           # Subsequent deploys
+pnpm install --frozen-lockfile
+pnpm deploy:stack --guided  # First time
+pnpm deploy:stack           # Subsequent deploys
+pnpm deploy:frontend        # Publish frontend
+# Or deploy the stack and frontend together:
+pnpm run deploy
 ```
 
 ### Run Backend (Development)
 
 ```bash
-cd backend
-uv sync              # Install dependencies
-AWS_PROFILE=<profile> fastapi dev main.py
+AWS_PROFILE=personal pnpm dev:backend
 ```
 
 ### Run Frontend (Development)
 
 ```bash
-cd frontend
-npm install
-npm run dev
+pnpm dev:frontend
 ```
 
 ---

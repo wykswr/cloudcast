@@ -1,5 +1,13 @@
 import { fetchAuthSession } from 'aws-amplify/auth'
-import type { VideoItem } from '../types'
+import type {
+  VideoItem, VideoListResponse, StreamResponse, UploadInitRequest,
+  UploadInitResponse, UploadPartRequest, CompleteUploadRequest,
+  SignPartResponse, UpdateVideoRequest, CompleteUploadResponse, DeleteVideoResponse,
+} from '@cloudcast/contracts'
+export type {
+  UploadInitRequest, UploadInitResponse, UploadPartRequest, UploadPart,
+  CompleteUploadRequest, SignPartResponse, UpdateVideoRequest,
+} from '@cloudcast/contracts'
 
 const API_BASE_URL = (
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
@@ -45,50 +53,6 @@ async function apiRequest<T>(
   return data as T
 }
 
-type VideoListResponse = {
-  items: VideoItem[]
-}
-
-type StreamResponse = {
-  streamUrl: string
-}
-
-export type UploadInitRequest = {
-  filename: string
-  contentType: string
-  title: string
-  sizeBytes?: number
-  durationSeconds?: number
-  sourceWidth?: number
-  sourceHeight?: number
-}
-
-export type UploadInitResponse = {
-  uploadId: string
-  videoId: string
-}
-
-export type UploadPartRequest = {
-  videoId: string
-  uploadId: string
-  partNumber: number
-}
-
-export type UploadPart = {
-  etag: string
-  partNumber: number
-}
-
-export type CompleteUploadRequest = {
-  videoId: string
-  uploadId: string
-  parts: UploadPart[]
-}
-
-export type SignPartResponse = {
-  presignedUrl: string
-}
-
 export const fetchVideos = async (): Promise<VideoItem[]> => {
   const data = await apiRequest<VideoListResponse>('/videos')
   return data.items
@@ -101,14 +65,9 @@ export const requestStream = async (
 }
 
 export const removeVideo = async (videoId: string) => {
-  return apiRequest<{ status: string }>(`/videos/${videoId}`, {
+  return apiRequest<DeleteVideoResponse>(`/videos/${videoId}`, {
     method: 'DELETE',
   })
-}
-
-export type UpdateVideoRequest = {
-  title?: string
-  favorite?: boolean
 }
 
 export const updateVideo = async (
@@ -136,7 +95,7 @@ export const signUploadPart = async (payload: UploadPartRequest) => {
 }
 
 export const completeUpload = async (payload: CompleteUploadRequest) => {
-  return apiRequest('/videos/upload/complete', {
+  return apiRequest<CompleteUploadResponse>('/videos/upload/complete', {
     method: 'POST',
     body: payload,
   })

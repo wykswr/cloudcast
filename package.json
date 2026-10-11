@@ -1,0 +1,38 @@
+{
+  "name": "cloudcast",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.25.0",
+  "engines": {
+    "node": ">=24 <25"
+  },
+  "scripts": {
+    "dev": "pnpm --parallel --filter backend --filter frontend dev",
+    "dev:backend": "pnpm --filter backend dev",
+    "dev:frontend": "pnpm --filter frontend dev",
+    "build": "pnpm -r build",
+    "build:backend": "pnpm --filter backend build",
+    "typecheck": "tsc -p scripts/tsconfig.json && pnpm -r typecheck",
+    "lint": "eslint backend packages scripts && pnpm --filter frontend lint",
+    "test": "vitest run",
+    "build:sam": "node scripts/deploy.ts build-sam",
+    "deploy": "node scripts/deploy.ts all",
+    "deploy:stack": "node scripts/deploy.ts stack",
+    "deploy:backend": "node scripts/deploy.ts backend",
+    "deploy:workflow": "node scripts/deploy.ts workflow",
+    "deploy:frontend": "node scripts/deploy.ts frontend"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.39.1",
+    "@types/aws-lambda": "^8.10.159",
+    "@types/node": "^24.10.1",
+    "esbuild": "^0.27.0",
+    "eslint": "^9.39.1",
+    "globals": "^16.5.0",
+    "jsonata": "^2.1.0",
+    "tsx": "^4.20.6",
+    "typescript": "~5.9.3",
+    "typescript-eslint": "^8.46.4",
+    "vitest": "^4.0.0"
+  }
+}

@@ -10,18 +10,18 @@ For deeper context, see `docs/ARCHITECTURE.md` and `docs/DESIGN.md`.
 
 ## Commands
 
-Run commands from the indicated package directory unless noted otherwise.
+Run workspace commands from the repository root; frontend commands may also run from `frontend/`.
 
 ### Backend: `backend/`
 
-FastAPI + uv, Python 3.11+.
+Hono + TypeScript, Node.js 24, pnpm workspace. Install dependencies from the repository root.
 
 ```bash
-uv sync
-AWS_PROFILE=personal uv run uvicorn main:app --reload   # local dev server on :8000
+pnpm install --frozen-lockfile
+AWS_PROFILE=personal pnpm dev:backend   # local dev server on :8000
 ```
 
-There is currently no backend test suite or linter configured.
+From the root, use `pnpm typecheck`, `pnpm lint`, `pnpm test` (Vitest), and `pnpm build`. Backend tests use injected collaborators and mocked AWS calls.
 
 ### Frontend: `frontend/`
 
@@ -40,22 +40,25 @@ SAM default stack: `cloudcast`.
 Default region: `us-west-2`.
 
 ```bash
-sam build && sam deploy --profile personal      # backend + all infra from template.yaml
-./deploy_frontend.sh                            # builds frontend, syncs to S3, invalidates CloudFront
+pnpm run deploy          # SAM stack, then frontend
+pnpm deploy:backend      # Shared SAM stack (backend + workflow + infrastructure)
+pnpm deploy:workflow     # Same SAM stack deployment
+pnpm deploy:frontend     # Builds frontend, syncs to S3, invalidates CloudFront
+pnpm run deploy --dry-run # Prints commands without AWS calls
 ```
 
-Always pass `--profile personal` to `sam` and `aws` commands. This stack lives in the `personal` AWS profile. `deploy_frontend.sh` already sets `AWS_PROFILE=personal` internally.
+Always pass `--profile personal` to `sam` and `aws` commands. This stack lives in the `personal` AWS profile. Node deployment commands in `scripts/` pass `--profile personal` and `--region` explicitly to every AWS/SAM command. Use `pnpm run deploy` rather than pnpm's built-in `pnpm deploy` command.
 
 See `README.md` for the one-time CloudFront signing-key setup in SSM. Those `aws ssm put-parameter` commands also need `--profile personal`. Deploys fail without that signing key.
 
 ## Working conventions for Codex
 
 - Prefer small, focused diffs. Do not rewrite unrelated code.
-- Preserve the backend dependency-injection pattern. Do not instantiate services or boto3 clients inside routes.
-- Keep backend Pydantic schemas and frontend TypeScript API types in sync.
+- Preserve the backend dependency-injection pattern. Do not instantiate services or AWS SDK clients inside routes.
+- Define API schemas/types in `packages/contracts`; import these contracts in both backend and frontend.
 - Keep backend S3 key derivation and Step Functions key derivation in sync.
 - Do not commit secrets, private keys, `.env` files, or local AWS credentials.
-- When adding deployment or AWS commands, include `--profile personal` unless the command is run by `deploy_frontend.sh`.
+- When adding deployment or AWS commands, include `--profile personal` including commands run by the Node deployment tooling.
 - When changing auth, upload, processing, playback, or DynamoDB ownership logic, check the related backend, frontend, infra, and workflow files together.
 - If tests are unavailable for an affected backend path, state what manual verification was performed or what remains unverified.
 
@@ -63,41 +66,30 @@ See `README.md` for the one-time CloudFront signing-key setup in SSM. Those `aws
 
 ### Backend deployment shape
 
-The backend is one FastAPI app deployed two ways:
+The backend is one Hono app deployed two ways:
 
-- Local development uses `uvicorn main:app`.
-- Lambda uses `lambda_handler.handler`, a Mangum adapter in `backend/lambda_handler.py` wrapping the same `app`.
+- Local development uses `backend/src/server.ts` and `@hono/node-server` on port 8000.
+- Lambda uses `backend/src/lambda.ts` and `@hono/aws-lambda`; esbuild produces `backend/dist/lambda.mjs`.
+- SAM uses Node.js 24, handler `lambda.handler`, and the prebuilt bundle (`SkipBuild: true`). `pnpm build:sam` rebuilds it before running SAM with profile `personal`.
 
 API Gateway has a Cognito authorizer, but the app also verifies the JWT itself.
 
 ### Dependency injection
 
-`create_app()` in `backend/main.py` builds AWS clients and services once in the lifespan startup and stores them on `app.state.container` as `AppContainer`, a dataclass.
+`createContainer()` in `backend/src/container.ts` builds AWS clients and services once. `createApp(container)` in `backend/src/app.ts` injects collaborators into route factories. The Lambda handler caches its adapter/container across warm invocations.
 
-Routes should get collaborators through `Depends` shims in:
-
-- `backend/app/api/dependencies.py`
-- `backend/app/auth.py`
-
-To add a new service:
-
-1. Wire it in the lifespan startup.
-2. Add a field to `AppContainer` in `backend/app/container.py`.
-3. Expose a `Depends` accessor.
-4. Use the accessor from routes.
-
-Do not construct services or boto3 clients directly in route handlers.
+To add a service, wire it in `createContainer`, add it to `AppContainer`, and use the injected collaborator in routes. Never construct services or AWS clients in route handlers. Tests can provide structural mocks through `AppContainer`.
 
 ### Auth model
 
 Auth has two tiers:
 
-- `UserDep` requires a valid Cognito token.
-- `AdminUserDep` additionally requires the `admin` group claim.
+- User middleware requires a valid Cognito token.
+- Admin middleware additionally requires the `admin` group claim.
 
 All write, upload, and stream endpoints are admin-only. Only `GET /videos` is plain-user.
 
-Token verification in `backend/app/auth.py` fetches Cognito JWKS, caches it, checks the RS256 signature and issuer, and manually matches `aud` / `client_id` with `verify_aud=False`.
+Token verification in `backend/src/auth.ts` fetches Cognito JWKS, caches it, checks the RS256 signature and issuer, and manually matches `aud` / `client_id` using `jose`.
 
 ### DynamoDB video model
 
@@ -105,9 +97,9 @@ The Videos table uses:
 
 - Partition key: `user_id`
 - Sort key: `id`, the video UUID
-- GSI: `VideoIdIndex`, used by `get_video_by_id` to look up a video without the owner
+- GSI: `VideoIdIndex`, used by `getVideoById` to look up a video without the owner
 
-Ownership is enforced in code through `assert_owner`, which returns 404 rather than 403 on owner mismatch.
+Ownership is enforced in code through `assertOwner`, which returns 404 rather than 403 on owner mismatch.
 
 Video status lifecycle:
 
@@ -131,9 +123,9 @@ HLS manifest key in the processed bucket:
 {user_id}/{video_id}/hls/{stem}.m3u8
 ```
 
-`stem` is the original filename without its extension.
+`stem` is the original filename with only its final extension removed, preserving earlier dots.
 
-The backend derives the HLS key in `complete_upload` in `backend/app/services/uploads.py`. The Step Functions `MarkReady` state independently derives it in `tasks/workflow.asl.json`.
+The backend derives the HLS key in `manifestKey` / `completeUpload` in `backend/src/services/uploads.ts`. The Step Functions `MarkReady` state independently derives it in `tasks/workflow.asl.json`.
 
 If you change naming on one side, change it on the other. Otherwise, the database value for `s3_key_hls` will not match the actual transcoded output.
 
@@ -159,7 +151,7 @@ The backend does not poll processing state. The frontend polls `GET /videos` for
 
 `GET /videos/{id}/stream` requires `status=ready`.
 
-`CloudFrontURLSigner` in `backend/app/services/cloudfront.py` loads the RSA private key from SSM with `WithDecryption=True`. It also unescapes literal `\n` sequences.
+`CloudFrontURLSigner` in `backend/src/services/cloudfront.ts` loads the RSA private key from SSM with `WithDecryption: true`. It also unescapes literal `\n` sequences.
 
 The signer creates a wildcard policy over the full HLS prefix:
 
@@ -169,25 +161,19 @@ The signer creates a wildcard policy over the full HLS prefix:
 
 The wildcard policy lets the master manifest, variant playlists, and segments share one token.
 
-CloudFront signing uses SHA1 + PKCS1v15, which is CloudFront's required scheme.
+CloudFront signing uses SHA1 + PKCS1v15, to preserve the existing signing scheme.
 
 ### API contract
 
 The API uses camelCase over the wire.
 
-Pydantic schemas in `backend/app/schemas.py` define snake_case Python fields with camelCase aliases, such as:
+Shared Zod schemas and inferred TypeScript types live in `packages/contracts/src/index.ts`. The frontend imports API types from `@cloudcast/contracts`. Backend request normalization also accepts the legacy snake_case aliases; camelCase wins if both are provided. DynamoDB records retain their snake_case field names.
 
-- `videoId`
-- `uploadId`
-- `partNumber`
-
-Frontend TypeScript types in `frontend/src/types.ts` and API helpers in `frontend/src/lib/api.ts` mirror those aliases.
-
-When changing a schema, update the matching frontend types and API calls in the same change.
+Swagger UI is at `/docs`, ReDoc at `/redoc`, and the generated OpenAPI schema at `/openapi.json`. Relative documentation links preserve the API Gateway stage prefix.
 
 ## Configuration
 
-Backend configuration is handled by `pydantic-settings` in `backend/app/config.py` and is read from environment variables or `backend/.env`. See `backend/.env.example`.
+Backend configuration is validated with Zod in `backend/src/config.ts` and is read from environment variables. The local Node server loads `backend/.env` with dotenv; Lambda uses its injected environment. See `backend/.env.example`.
 
 Local emulator override settings include:
 

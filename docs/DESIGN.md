@@ -18,13 +18,13 @@
   * **Auth SDK:** AWS Amplify Auth (easiest wrapper for Cognito)
   * **Video Player:** Video.js or ReactPlayer
 
-### Backend (FastAPI)
+### Backend (Hono)
 
-  * **Environment Manager:** uv (Fast Python package installer and resolver)
-  * **Framework:** FastAPI (Python) - Using synchronous endpoints
+  * **Environment Manager:** pnpm workspace (one root lockfile)
+  * **Framework:** Hono (TypeScript) - Async endpoints, local Node.js server and Lambda adapter
   * **Database:** Amazon DynamoDB (Serverless NoSQL database, native AWS integration)
-  * **AWS SDK:** boto3 (For DynamoDB operations)
-  * **Auth Validation:** fastapi-cognito or manual JWT verification
+  * **AWS SDK:** AWS SDK v3 (S3, DynamoDB, SSM, presigning)
+  * **Auth Validation:** jose with cached Cognito JWKS
 
 ### Infrastructure (AWS)
 
@@ -36,7 +36,7 @@
   * **Transcoding:** AWS Elemental MediaConvert
   * **Orchestration:** AWS Step Functions - Coordinates the video processing workflow using optimized AWS service integrations (no Lambda required)
   * **Compute:**
-      * **API Hosting:** EC2 (FastAPI running on dedicated instance with synchronous endpoints)
+      * **API Hosting:** API Gateway + Lambda (Node.js 24)
   * **Event Processing:** S3 Event Notifications trigger Step Functions execution
 
 ## 3\. Feature Scope (MVP)
@@ -72,19 +72,19 @@ Since files can be 20GB, a single PUT request will fail. We must use **Multipart
 **1. Initiate:**
 
   * React requests `POST /videos/upload/init` with filename/type
-  * FastAPI calls `s3.create_multipart_upload` and returns an `uploadId` + `video_id`
+  * Hono calls `CreateMultipartUploadCommand` and returns an `uploadId` + `videoId`
 
 **2. Upload Parts (Loop):**
 
-  * React slices the file into chunks (e.g., 50MB)
+  * React slices the file into chunks (10 MB)
   * For each chunk, React requests `POST /videos/upload/sign-part` (params: `uploadId`, `partNumber`)
-  * FastAPI returns a Presigned PUT URL for that specific part
+  * Hono returns a Presigned PUT URL for that specific part
   * React uploads the chunk directly to S3
 
 **3. Complete:**
 
   * React sends `POST /videos/upload/complete` with the list of ETags from S3
-  * FastAPI calls `s3.complete_multipart_upload` to assemble the file
+  * Hono calls `CompleteMultipartUploadCommand` to assemble the file
 
 ### B. The Processing Flow (Step Functions with Optimized Integrations)
 
@@ -135,8 +135,8 @@ Since files can be 20GB, a single PUT request will fail. We must use **Multipart
 ### C. The Playback Flow (Secure)
 
 1.  User requests to watch Video X
-2.  FastAPI checks if User owns Video X
-3.  FastAPI uses a CloudFront Private Key to sign the video URL
+2.  Hono checks if User owns Video X
+3.  Hono uses a CloudFront Private Key to sign the video URL
 4.  **Result:** `https://cdn.xyz.net/video.m3u8?signature=abc...&expires=123...`
 5.  React loads this URL into Video.js
 
@@ -164,7 +164,7 @@ Since files can be 20GB, a single PUT request will fail. We must use **Multipart
     * **Partition Key:** `id` (String) - Enables direct lookup by video ID
     * **Projection:** ALL
 
-## 6\. API Endpoints (FastAPI)
+## 6\. API Endpoints (Hono)
 
 ### Auth
 
@@ -179,7 +179,7 @@ Since files can be 20GB, a single PUT request will fail. We must use **Multipart
 ### Streaming
 
   * `GET /videos` $\rightarrow$ List user videos
-  * `GET /videos/{video_id}/stream` $\rightarrow$ Returns `{ stream_url: "https://..." }` (CloudFront Signed)
+  * `GET /videos/{video_id}/stream` $\rightarrow$ Returns `{ streamUrl: "https://..." }` (CloudFront Signed)
 
 *(Note: The Webhook endpoint has been removed as Lambda now updates the DB directly)*
 
@@ -191,15 +191,15 @@ Since files can be 20GB, a single PUT request will fail. We must use **Multipart
   * **SAM Template:** Define S3 buckets (raw-uploads, processed-videos) with appropriate policies and CORS.
   * **DynamoDB Tables:** Add Users and Videos tables to SAM template with GSI for video lookup.
   * **Cognito:** Add Cognito User Pool and User Pool Client to SAM template.
-  * **Deploy SAM:** Run `sam build && sam deploy --guided` to create S3, DynamoDB, Cognito, and Lambda infrastructure.
-  * **Backend Environment:** `uv init` in backend, add deps (`fastapi`, `boto3`, `pydantic`).
-  * **EC2 Setup:** Launch EC2 instance, configure security groups and IAM role for DynamoDB access, install Python and dependencies.
+  * **Deploy SAM:** Run `pnpm deploy:stack --guided` to create S3, DynamoDB, Cognito, and Lambda infrastructure.
+  * **Backend Environment:** `pnpm install --frozen-lockfile` from the repository root; API contracts are shared Zod schemas.
+  * **Lambda Setup:** Bundle the TypeScript API with esbuild; SAM references the output with `SkipBuild: true`.
 
 ### Phase 2: The "Multipart Upload API" (Days 3-5)
 
   * **S3 Buckets:** Already created by SAM with CORS enabled.
-  * **FastAPI on EC2:** Deploy FastAPI application to EC2, configure systemd/supervisor for process management.
-  * **API Endpoints:** Implement Init, Sign-Part, Complete logic in FastAPI.
+  * **Hono API:** Run locally with `pnpm dev:backend`; deploy the bundled handler to Lambda.
+  * **API Endpoints:** Implement Init, Sign-Part, Complete logic in Hono.
   * **Frontend:** Set up React (local dev with Vite), integrate Amplify Auth, implement chunking loop for S3 multipart uploads.
 
 ### Phase 3: The "Processing Pipeline with Step Functions" (Days 6-8)
@@ -218,12 +218,12 @@ Since files can be 20GB, a single PUT request will fail. We must use **Multipart
   * **Parameters:** Pass DynamoDB table names and S3 bucket names via Step Functions definition (no environment variables needed).
   * **Error Handling:** Add Catch blocks in Step Functions to update DynamoDB status to `failed` on errors.
   * **No Lambda Code:** Entire workflow uses native AWS SDK integrations - no custom code to deploy or maintain.
-  * **Deploy & Test:** `sam build && sam deploy`, monitor Step Functions execution in AWS Console and CloudWatch Logs.
+  * **Deploy & Test:** `pnpm deploy:stack`, monitor Step Functions execution in AWS Console and CloudWatch Logs.
 
 ### Phase 4: The "Secure Streaming" (Days 9-10)
 
   * **CloudFront:** Add CloudFront distribution to SAM template, connected to processed-videos bucket.
   * **Origin Access Identity:** Configure in SAM to restrict S3 access to CloudFront only.
-  * **CloudFront Key:** Generate RSA key pair, store private key securely on EC2 or in Secrets Manager.
-  * **API Enhancement:** Update FastAPI (on EC2) to generate CloudFront signed URLs.
-  * **Frontend:** Build React app with Vite, integrate Video.js with signed URLs from FastAPI API.
+  * **CloudFront Key:** Generate RSA key pair, store the private key in SSM SecureString.
+  * **API Enhancement:** Update Hono to generate CloudFront signed URLs.
+  * **Frontend:** Build React app with Vite, integrate Video.js with signed URLs from Hono API.

@@ -8,46 +8,69 @@ CloudCast is a full-stack, AWS-backed video hosting PoC: users authenticate with
 ## Repo layout
 
 - `docs/`: reference documentation (architecture and product/design notes)
-- `template.yaml`: AWS SAM template (API Gateway + Lambda/FastAPI, Cognito, S3, DynamoDB, Step Functions, CloudFront)
-- `backend/`: FastAPI app (runs locally via Uvicorn; deployed to Lambda via Mangum)
+- `template.yaml`: AWS SAM template (API Gateway + Lambda/Hono, Cognito, S3, DynamoDB, Step Functions, CloudFront)
+- `backend/`: TypeScript Hono app (Node.js locally; official Hono adapter in Lambda)
+- `packages/contracts/`: shared Zod schemas and inferred API types
 - `frontend/`: React + Vite + TypeScript app (Amplify Auth, multipart upload client, HLS playback via hls.js)
 - `tasks/workflow.asl.json`: Step Functions state machine (MediaConvert job + DynamoDB status update)
-- `deploy_frontend.sh`: builds and uploads the frontend to the S3/CloudFront resources created by SAM
+- `scripts/`: Node deployment commands for the SAM stack and frontend publishing
 
 ## Prerequisites
 
-- Python 3.11+
-- Node.js 18+ (repo currently uses Node 23 locally)
-- AWS CLI configured (`aws configure`) and AWS SAM CLI installed
+- Node.js 24 and pnpm 11.25.0
+- AWS CLI configured (`aws configure --profile personal`) and AWS SAM CLI installed
 - An AWS account/region with permissions to create: IAM, Lambda, API Gateway, Cognito, DynamoDB, S3, CloudFront, Step Functions, MediaConvert, SSM Parameters
+
+Enable pnpm through Corepack once after installing or switching Node versions:
+
+```bash
+nvm use 24  # If Node is managed with nvm
+corepack enable pnpm
+pnpm --version
+```
+
+Corepack uses the pnpm version pinned in the root `package.json`.
 
 ## Local development
 
 
 ### AWS profile
-The SAM template and deploy script use the `personal` AWS CLI profile by default. If your local AWS CLI uses a different profile name, replace `personal` in the commands below with your own profile.
+The SAM template and Node deployment commands use the `personal` AWS CLI profile. If your local AWS CLI uses a different profile name, replace `personal` in the commands below with your own profile.
 
-### Backend (FastAPI)
+### Backend (Hono)
 
 ```bash
-cd backend
-cp .env.example .env
-uv sync
-AWS_PROFILE=personal uv run uvicorn main:app --reload
+pnpm install --frozen-lockfile
+cp backend/.env.example backend/.env
+AWS_PROFILE=personal pnpm dev:backend
 ```
 
-The backend reads configuration from environment variables (see `backend/app/config.py`) and supports optional `DYNAMODB_ENDPOINT_URL` / `S3_ENDPOINT_URL` for local emulators.
+The backend reads configuration from environment variables (see `backend/src/config.ts`) and supports optional `DYNAMODB_ENDPOINT_URL` / `S3_ENDPOINT_URL` for local emulators.
 
 ### Frontend (Vite)
 
 ```bash
 cd frontend
 cp .env.example .env
-pnpm install
 pnpm dev
 ```
 
 For local dev, `VITE_API_BASE_URL` typically points at `http://localhost:8000`.
+
+## Workspace checks
+
+Run from the repository root:
+
+```bash
+pnpm typecheck
+pnpm lint
+pnpm test
+pnpm build
+```
+
+`pnpm dev` starts both apps. The backend serves Swagger UI at `http://localhost:8000/docs`, ReDoc at `/redoc`, and its generated schema at `/openapi.json`. Deployed API Gateway retains its Cognito authorizer for these routes.
+
+The Lambda bundle is built with esbuild, including AWS SDK and workspace dependencies. SAM points to `backend/dist/` with `SkipBuild: true`. Node deployment commands always rebuild it; `pnpm build:sam` prepares the artifacts without deploying.
 
 ## Deploy to AWS (SAM)
 
@@ -82,15 +105,13 @@ Notes:
 `samconfig.toml` is set up for a default stack named `cloudcast` (region `us-west-2`, profile `personal`). You can deploy with:
 
 ```bash
-sam build --profile personal
-sam deploy --profile personal
+pnpm deploy:stack
 ```
 
 Or run a guided deploy and set parameters explicitly:
 
 ```bash
-sam deploy --guided \
-  --profile personal \
+pnpm deploy:stack --guided \
   --parameter-overrides \
     Env=dev \
     CorsAllowOrigin=http://localhost:5173 \
@@ -100,21 +121,33 @@ sam deploy --guided \
 
 ### 3. Deploy the frontend
 
-This script pulls stack outputs (API URL + Cognito IDs + frontend bucket/distribution), builds the frontend, syncs it to S3, and creates a CloudFront invalidation:
+The Node command reads stack outputs once, passes the API URL and Cognito IDs to Vite, builds the frontend, syncs it to S3, and waits for a CloudFront invalidation:
 
 ```bash
-./deploy_frontend.sh
+pnpm deploy:frontend
 ```
 
 Notes:
-- The script sets `AWS_PROFILE=personal` and uses `npm install`/`npm run build` internally.
+- Every AWS/SAM command specifies profile `personal` and region `us-west-2` by default. Frontend configuration is passed to the build without changing local `.env.production`.
 - When it finishes, it prints the CloudFront URL for the hosted frontend.
+
+### Deploy everything or preview commands
+
+```bash
+pnpm run deploy                        # Stack first, then frontend
+pnpm deploy:backend                    # Shared SAM stack (backend + workflow + infrastructure)
+pnpm deploy:workflow                   # Same shared SAM deployment
+pnpm run deploy --dry-run               # Print commands; no subprocesses or AWS calls
+pnpm deploy:frontend --stack-name cloudcast --region us-west-2
+```
+
+Use `pnpm run deploy` for the full deployment because `pnpm deploy` is pnpm's built-in package deployment command. All entry points live in `scripts/deploy.ts` and resolve paths from the repository root. The backend and workflow share one CloudFormation stack, so their commands both rebuild and deploy the complete SAM template. Unchanged stacks are successful no-ops. Install dependencies with `pnpm install --frozen-lockfile` before deploying.
 
 ## What gets created
 
 From `template.yaml`:
 
-- API: API Gateway + Lambda (FastAPI via Mangum) with Cognito authorizer
+- API: API Gateway + Lambda (Hono on Node.js 24) with Cognito authorizer
 - Auth: Cognito User Pool + User Pool Client
 - Storage: `cloudcast-raw-{env}` and `cloudcast-processed-{env}` S3 buckets
 - DB: `CloudCast-Users-{env}` and `CloudCast-Videos-{env}` DynamoDB tables (+ `VideoIdIndex` GSI)

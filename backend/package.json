@@ -1,0 +1,27 @@
+{
+  "name": "backend",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "tsx watch src/server.ts",
+    "build": "tsc --noEmit && node scripts/build.mjs",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@cloudcast/contracts": "workspace:*",
+    "@aws-sdk/client-dynamodb": "^3.922.0",
+    "@aws-sdk/client-s3": "^3.922.0",
+    "@aws-sdk/client-ssm": "^3.922.0",
+    "@aws-sdk/cloudfront-signer": "^3.922.0",
+    "@aws-sdk/lib-dynamodb": "^3.922.0",
+    "@aws-sdk/s3-request-presigner": "^3.922.0",
+    "@hono/aws-lambda": "^1.0.1",
+    "@hono/node-server": "^1.19.6",
+    "@hono/swagger-ui": "^0.5.2",
+    "@hono/zod-openapi": "^1.1.5",
+    "dotenv": "^17.2.3",
+    "hono": "^4.13.13",
+    "jose": "^6.1.1",
+    "zod": "^4.1.12"
+  }
+}

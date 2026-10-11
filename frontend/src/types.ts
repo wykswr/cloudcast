@@ -5,20 +5,7 @@ export type AuthUser = {
   email?: string | null
 }
 
-export type VideoStatus = 'uploading' | 'processing' | 'ready' | 'failed'
-
-export type VideoItem = {
-  id: string
-  title?: string | null
-  status: VideoStatus | string
-  createdAt: number
-  s3KeyHls?: string | null
-  sizeBytes?: number | null
-  durationSeconds?: number | null
-  sourceWidth?: number | null
-  sourceHeight?: number | null
-  favorite?: boolean
-}
+export type { VideoItem, VideoStatus } from '@cloudcast/contracts'
 
 export type UploadState = {
   stage: 'idle' | 'uploading' | 'success' | 'error'
