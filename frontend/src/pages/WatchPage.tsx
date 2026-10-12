@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useState, type ReactNode } from 'react'
 import { useNavigate, useParams } from 'react-router-dom'
 import Topbar from '../components/layout/Topbar'
 import VideoPlayer from '../components/watch/VideoPlayer'
@@ -13,12 +13,20 @@ import { formatBytes, formatError, formatRelative } from '../utils/format'
 
 const UP_NEXT_LIMIT = 8
 
+/** Stands in for the player while the clip is unavailable or its stream URL is loading. */
+function PlayerPlaceholder({ children }: { children: ReactNode }) {
+  return (
+    <div className="grid aspect-video place-items-center rounded-[22px] bg-white text-center text-sakura-ink-soft shadow-sk-panel">
+      {children}
+    </div>
+  )
+}
+
 function WatchPage() {
   const { id } = useParams<{ id: string }>()
   const navigate = useNavigate()
   const { openUpload } = useShell()
-  const { videos, loading, getStreamUrl, toggleFavorite, renameVideo, deleteVideo } =
-    useVideos()
+  const { videos, loading, getStreamUrl, toggleFavorite, renameVideo, deleteVideo } = useVideos()
 
   const [streamUrl, setStreamUrl] = useState<string | null>(null)
   const [streamError, setStreamError] = useState<string | null>(null)
@@ -74,14 +82,10 @@ function WatchPage() {
 
   return (
     <>
-      <Topbar
-        title="Now watching"
-        subtitle={video.title ?? undefined}
-        onUpload={openUpload}
-      />
+      <Topbar title="Now watching" subtitle={video.title ?? undefined} onUpload={openUpload} />
       <div className="px-7 pb-16 pt-5">
         <button
-          className="mb-4 rounded-full bg-white px-3.5 py-2 text-[13px] font-bold text-sakura-ink-soft shadow-[0_4px_12px_rgba(167,139,250,0.15)]"
+          className="mb-4 rounded-full bg-white px-3.5 py-2 text-[13px] font-bold text-sakura-ink-soft shadow-sk-soft"
           onClick={() => navigate(-1)}
         >
           ← Back
@@ -90,7 +94,7 @@ function WatchPage() {
         <div className="grid gap-6 lg:grid-cols-[1fr_320px]">
           <div>
             {video.status !== 'ready' ? (
-              <div className="grid aspect-video place-items-center rounded-[22px] bg-white text-center text-sakura-ink-soft shadow-[0_18px_40px_-20px_rgba(255,93,143,0.4)]">
+              <PlayerPlaceholder>
                 <div>
                   <Mascot className="text-5xl" />
                   <p className="mt-2 text-sm">
@@ -99,7 +103,7 @@ function WatchPage() {
                       : 'Still cooking your video… 🍳'}
                   </p>
                 </div>
-              </div>
+              </PlayerPlaceholder>
             ) : streamError ? (
               <div className="grid aspect-video place-items-center rounded-[22px] bg-sakura-fail/10 text-center text-sakura-fail">
                 {streamError}
@@ -107,9 +111,9 @@ function WatchPage() {
             ) : streamUrl ? (
               <VideoPlayer src={streamUrl} />
             ) : (
-              <div className="grid aspect-video place-items-center rounded-[22px] bg-white text-sakura-ink-soft shadow-[0_18px_40px_-20px_rgba(255,93,143,0.4)]">
+              <PlayerPlaceholder>
                 <Mascot className="text-5xl" />
-              </div>
+              </PlayerPlaceholder>
             )}
 
             <div className="mt-5">
@@ -120,19 +124,19 @@ function WatchPage() {
                 <span>uploaded {formatRelative(video.createdAt)}</span>
                 <div className="ml-auto flex gap-2">
                   <button
-                    className="sk-chip bg-white text-sakura-ink shadow-[0_4px_12px_rgba(167,139,250,0.18)]"
+                    className="sk-chip bg-white text-sakura-ink shadow-sk-soft"
                     onClick={() => void toggleFavorite(video)}
                   >
                     {video.favorite ? '♥ Favorited' : '♡ Favorite'}
                   </button>
                   <button
-                    className="sk-chip bg-white text-sakura-ink shadow-[0_4px_12px_rgba(167,139,250,0.18)]"
+                    className="sk-chip bg-white text-sakura-ink shadow-sk-soft"
                     onClick={() => setRenaming(true)}
                   >
                     ✏️ Rename
                   </button>
                   <button
-                    className="sk-chip bg-white text-sakura-fail shadow-[0_4px_12px_rgba(167,139,250,0.18)]"
+                    className="sk-chip bg-white text-sakura-fail shadow-sk-soft"
                     onClick={() => setConfirming(true)}
                   >
                     🗑️ Delete

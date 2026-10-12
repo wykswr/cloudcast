@@ -62,11 +62,14 @@ For local dev, `VITE_API_BASE_URL` typically points at `http://localhost:8000`.
 Run from the repository root:
 
 ```bash
+pnpm format:check   # Prettier; `pnpm format` rewrites files
 pnpm typecheck
 pnpm lint
-pnpm test
+pnpm test           # `pnpm test:coverage` also enforces coverage floors
 pnpm build
 ```
+
+CI (`.github/workflows/ci.yml`) runs the same checks on every pull request and on pushes to `master`.
 
 `pnpm dev` starts both apps. The backend serves Swagger UI at `http://localhost:8000/docs`, ReDoc at `/redoc`, and its generated schema at `/openapi.json`. Deployed API Gateway retains its Cognito authorizer for these routes.
 

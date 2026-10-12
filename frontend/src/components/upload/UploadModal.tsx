@@ -94,13 +94,9 @@ function UploadModal({ open, onClose }: UploadModalProps) {
         }`}
       >
         <Mascot className="text-5xl" />
-        <h4 className="mb-0.5 mt-2 text-base">
-          {file ? file.name : 'Drag your video here'}
-        </h4>
+        <h4 className="mb-0.5 mt-2 text-base">{file ? file.name : 'Drag your video here'}</h4>
         <p className="text-xs text-sakura-ink-soft">
-          {file
-            ? formatBytes(file.size)
-            : 'or click to browse · mp4 / mov · big files welcome'}
+          {file ? formatBytes(file.size) : 'or click to browse · mp4 / mov · big files welcome'}
         </p>
         <input
           ref={inputRef}
@@ -112,9 +108,7 @@ function UploadModal({ open, onClose }: UploadModalProps) {
       </div>
 
       <div className="mt-4 text-left">
-        <label className="mb-1.5 block text-xs font-bold text-sakura-ink-soft">
-          Title
-        </label>
+        <label className="mb-1.5 block text-xs font-bold text-sakura-ink-soft">Title</label>
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}

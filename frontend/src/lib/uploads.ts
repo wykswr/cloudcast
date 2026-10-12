@@ -1,9 +1,4 @@
-import {
-  type CompleteUploadRequest,
-  initUpload,
-  signUploadPart,
-  completeUpload,
-} from './api'
+import { type CompleteUploadRequest, initUpload, signUploadPart, completeUpload } from './api'
 import type { UploadState } from '../types'
 import { formatError } from '../utils/format'
 
@@ -42,9 +37,7 @@ export const probeVideoMetadata = (file: File): Promise<VideoMetadata> =>
     video.onloadedmetadata = () => {
       cleanup()
       resolve({
-        durationSeconds: Number.isFinite(video.duration)
-          ? video.duration
-          : undefined,
+        durationSeconds: Number.isFinite(video.duration) ? video.duration : undefined,
         sourceWidth: video.videoWidth || undefined,
         sourceHeight: video.videoHeight || undefined,
       })
@@ -56,13 +49,8 @@ export const probeVideoMetadata = (file: File): Promise<VideoMetadata> =>
     video.src = url
   })
 
-export const multipartUpload = async ({
-  file,
-  title,
-  onProgress,
-}: MultipartUploadParams) => {
-  const { durationSeconds, sourceWidth, sourceHeight } =
-    await probeVideoMetadata(file)
+export const multipartUpload = async ({ file, title, onProgress }: MultipartUploadParams) => {
+  const { durationSeconds, sourceWidth, sourceHeight } = await probeVideoMetadata(file)
 
   const { uploadId, videoId } = await initUpload({
     filename: file.name,
@@ -94,13 +82,7 @@ export const multipartUpload = async ({
   let completedParts = 0
   const contentType = file.type || 'application/octet-stream'
 
-  const uploadPart = async ({
-    partNumber,
-    chunk,
-  }: {
-    partNumber: number
-    chunk: Blob
-  }) => {
+  const uploadPart = async ({ partNumber, chunk }: { partNumber: number; chunk: Blob }) => {
     const { presignedUrl } = await signUploadPart({
       videoId,
       uploadId,

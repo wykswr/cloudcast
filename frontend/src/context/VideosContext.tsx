@@ -1,24 +1,24 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState,
-  type ReactNode,
-} from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react'
 import {
   fetchVideos,
   removeVideo,
   requestStream,
   updateVideo,
+  type UpdateVideoRequest,
 } from '../lib/api'
 import { multipartUpload } from '../lib/uploads'
 import { formatError } from '../utils/format'
+import { isInFlight } from '../utils/status'
 import type { VideoItem } from '../types'
 import { VideosContext, type VideosContextValue } from './videos-context'
 
 const POLL_INTERVAL_MS = 5000
-const ACTIVE_STATUSES = new Set(['uploading', 'processing'])
+
+type EditableFields = Pick<VideoItem, 'title' | 'favorite'>
+
+function patchVideo(videos: VideoItem[], id: string, patch: Partial<VideoItem>) {
+  return videos.map((v) => (v.id === id ? { ...v, ...patch } : v))
+}
 
 export function VideosProvider({ children }: { children: ReactNode }) {
   const [videos, setVideos] = useState<VideoItem[]>([])
@@ -46,47 +46,43 @@ export function VideosProvider({ children }: { children: ReactNode }) {
   }, [reload])
 
   // Poll while anything is still uploading/processing so cards flip to ready.
-  const hasActive = videos.some((v) => ACTIVE_STATUSES.has(v.status))
+  const hasActive = videos.some(isInFlight)
   useEffect(() => {
     if (!hasActive) return
     const id = window.setInterval(() => void reload(), POLL_INTERVAL_MS)
     return () => window.clearInterval(id)
   }, [hasActive, reload])
 
-  const toggleFavorite = useCallback(async (video: VideoItem) => {
-    const next = !video.favorite
-    // Optimistic update; revert on failure.
-    setVideos((prev) =>
-      prev.map((v) => (v.id === video.id ? { ...v, favorite: next } : v)),
-    )
-    try {
-      await updateVideo(video.id, { favorite: next })
-    } catch (err) {
-      setVideos((prev) =>
-        prev.map((v) =>
-          v.id === video.id ? { ...v, favorite: video.favorite } : v,
-        ),
-      )
-      setError(formatError(err))
-    }
-  }, [])
+  /** Applies `patch` locally, saves it, and restores the previous values if saving fails. */
+  const updateOptimistically = useCallback(
+    async (video: VideoItem, patch: UpdateVideoRequest & Partial<EditableFields>) => {
+      const previous: Partial<EditableFields> = {}
+      if ('title' in patch) previous.title = video.title
+      if ('favorite' in patch) previous.favorite = video.favorite
+      setVideos((prev) => patchVideo(prev, video.id, patch))
+      try {
+        await updateVideo(video.id, patch)
+      } catch (err) {
+        setVideos((prev) => patchVideo(prev, video.id, previous))
+        setError(formatError(err))
+        throw err
+      }
+    },
+    [],
+  )
 
-  const renameVideo = useCallback(async (video: VideoItem, title: string) => {
-    const previous = video.title
-    // Optimistic update; revert on failure.
-    setVideos((prev) =>
-      prev.map((v) => (v.id === video.id ? { ...v, title } : v)),
-    )
-    try {
-      await updateVideo(video.id, { title })
-    } catch (err) {
-      setVideos((prev) =>
-        prev.map((v) => (v.id === video.id ? { ...v, title: previous } : v)),
-      )
-      setError(formatError(err))
-      throw err
-    }
-  }, [])
+  const toggleFavorite = useCallback(
+    async (video: VideoItem) => {
+      // The error is already surfaced through `error`; nothing else to do here.
+      await updateOptimistically(video, { favorite: !video.favorite }).catch(() => {})
+    },
+    [updateOptimistically],
+  )
+
+  const renameVideo = useCallback(
+    (video: VideoItem, title: string) => updateOptimistically(video, { title }),
+    [updateOptimistically],
+  )
 
   const deleteVideo = useCallback(async (videoId: string) => {
     await removeVideo(videoId)
@@ -118,7 +114,17 @@ export function VideosProvider({ children }: { children: ReactNode }) {
       getStreamUrl,
       upload,
     }),
-    [videos, loading, error, reload, toggleFavorite, renameVideo, deleteVideo, getStreamUrl, upload],
+    [
+      videos,
+      loading,
+      error,
+      reload,
+      toggleFavorite,
+      renameVideo,
+      deleteVideo,
+      getStreamUrl,
+      upload,
+    ],
   )
 
   return <VideosContext value={value}>{children}</VideosContext>

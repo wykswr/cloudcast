@@ -203,14 +203,17 @@ cloudcast/
 │   ├── scripts/build.mjs  # Self-contained Lambda esbuild bundle
 │   ├── test/              # Vitest API, auth, AWS, signing, and workflow tests
 │   └── src/
-│       ├── app.ts         # Injected app factory and documentation
-│       ├── server.ts      # Node.js local entry point (:8000)
+│       ├── app.ts         # Injected app factory, error handling
+│       ├── docs.ts        # OpenAPI, Swagger UI, and ReDoc routes
+│       ├── logger.ts      # Structured JSON logging
+│       ├── server.ts      # Node.js local entry point (PORT, default 8000)
 │       ├── lambda.ts      # Cached official Hono Lambda adapter
 │       ├── container.ts   # Client/service dependency wiring
 │       ├── auth.ts        # Cognito JWT verification (jose)
 │       ├── aws.ts         # AWS SDK v3 client factories
 │       ├── config.ts      # Zod settings (environment variables)
-│       ├── routes/        # OpenAPI routes and authorization
+│       ├── middleware/    # Cognito auth, JSON body, and CORS middleware
+│       ├── routes/        # OpenAPI route definitions and handlers
 │       └── services/      # Upload, video repository, CloudFront signing
 │
 ├── packages/contracts/    # Shared Zod API schemas and TypeScript types
@@ -221,6 +224,7 @@ cloudcast/
 ├── frontend/              # React SPA
 │   ├── package.json      # pnpm workspace dependencies
 │   ├── vite.config.ts    # Vite build configuration
+│   ├── test/             # Vitest tests for lib/, utils/, and gesture helpers
 │   └── src/
 │       ├── main.tsx      # App bootstrap + Amplify init
 │       ├── amplify.ts    # AWS Amplify configuration

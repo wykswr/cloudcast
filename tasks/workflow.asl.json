@@ -158,9 +158,7 @@
       },
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
+          "ErrorEquals": ["States.ALL"],
           "Next": "MarkFailed"
         }
       ],
@@ -279,9 +277,7 @@
       },
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
+          "ErrorEquals": ["States.ALL"],
           "Next": "MarkFailed"
         }
       ],
@@ -409,9 +405,7 @@
       },
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
+          "ErrorEquals": ["States.ALL"],
           "Next": "MarkFailed"
         }
       ],
@@ -543,9 +537,7 @@
       },
       "Catch": [
         {
-          "ErrorEquals": [
-            "States.ALL"
-          ],
+          "ErrorEquals": ["States.ALL"],
           "Next": "MarkFailed"
         }
       ],

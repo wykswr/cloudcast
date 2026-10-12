@@ -46,12 +46,7 @@ function VideoGrid({ videos }: VideoGridProps) {
       )}
       <div className="grid grid-cols-[repeat(auto-fill,minmax(220px,1fr))] gap-5">
         {videos.map((video) => (
-          <VideoCard
-            key={video.id}
-            video={video}
-            onRename={setRenaming}
-            onDelete={setPending}
-          />
+          <VideoCard key={video.id} video={video} onRename={setRenaming} onDelete={setPending} />
         ))}
       </div>
 

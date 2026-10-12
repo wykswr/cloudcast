@@ -6,6 +6,7 @@ import Mascot from '../components/common/Mascot'
 import { useShell } from '../components/layout/shell'
 import { useVideos } from '../context/videos-context'
 import { formatBytes } from '../utils/format'
+import { isInFlight } from '../utils/status'
 import type { VideoItem } from '../types'
 
 export type LibraryView = 'all' | 'favorites' | 'recent' | 'processing'
@@ -42,8 +43,7 @@ const VIEWS: Record<LibraryView, ViewMeta> = {
     title: 'Processing',
     emptyTitle: 'Nothing cooking right now',
     emptyMessage: "When you upload a clip, you'll see it transcoding here.",
-    filter: (v) =>
-      v.filter((x) => x.status === 'processing' || x.status === 'uploading'),
+    filter: (v) => v.filter(isInFlight),
   },
 }
 
@@ -90,9 +90,7 @@ function LibraryPage({ view }: { view: LibraryView }) {
         ) : filtered.length === 0 ? (
           <EmptyState
             title={search ? 'No matching clips' : meta.emptyTitle}
-            message={
-              search ? 'Try a different search ♡' : meta.emptyMessage
-            }
+            message={search ? 'Try a different search ♡' : meta.emptyMessage}
             actionLabel={view === 'all' && !search ? 'Upload a clip' : undefined}
             onAction={view === 'all' && !search ? openUpload : undefined}
           />

@@ -21,7 +21,7 @@ pnpm install --frozen-lockfile
 AWS_PROFILE=personal pnpm dev:backend   # local dev server on :8000
 ```
 
-From the root, use `pnpm typecheck`, `pnpm lint`, `pnpm test` (Vitest), and `pnpm build`. Backend tests use injected collaborators and mocked AWS calls.
+From the root, use `pnpm format`, `pnpm typecheck`, `pnpm lint`, `pnpm test` (Vitest), `pnpm test:coverage`, and `pnpm build`. CI runs `format:check`, lint, typecheck, `test:coverage`, and build on every PR. Backend tests use injected collaborators and mocked AWS calls.
 
 ### Frontend: `frontend/`
 
@@ -54,6 +54,8 @@ See `README.md` for the one-time CloudFront signing-key setup in SSM. Those `aws
 ## Working conventions for Codex
 
 - Prefer small, focused diffs. Do not rewrite unrelated code.
+- Code is formatted with Prettier (`pnpm format`); do not hand-format against it.
+- Put request middleware in `backend/src/middleware/` and log through `backend/src/logger.ts`, not `console`.
 - Preserve the backend dependency-injection pattern. Do not instantiate services or AWS SDK clients inside routes.
 - Define API schemas/types in `packages/contracts`; import these contracts in both backend and frontend.
 - Keep backend S3 key derivation and Step Functions key derivation in sync.
@@ -167,7 +169,7 @@ CloudFront signing uses SHA1 + PKCS1v15, to preserve the existing signing scheme
 
 The API uses camelCase over the wire.
 
-Shared Zod schemas and inferred TypeScript types live in `packages/contracts/src/index.ts`. The frontend imports API types from `@cloudcast/contracts`. Backend request normalization also accepts the legacy snake_case aliases; camelCase wins if both are provided. DynamoDB records retain their snake_case field names.
+Shared Zod schemas and inferred TypeScript types live in `packages/contracts/src/index.ts`. The frontend imports API types from `@cloudcast/contracts`. Request bodies are camelCase only. Video status is the `VideoStatusSchema` enum; add new statuses there (and to the workflow) rather than as free strings. DynamoDB records retain their snake_case field names and are validated against `VideoRecordSchema` in `backend/src/services/videos.ts` when read.
 
 Swagger UI is at `/docs`, ReDoc at `/redoc`, and the generated OpenAPI schema at `/openapi.json`. Relative documentation links preserve the API Gateway stage prefix.
 

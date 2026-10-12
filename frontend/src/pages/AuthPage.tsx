@@ -64,11 +64,13 @@ function AuthPage() {
         ? 'Almost there ✉️'
         : 'Hello again 👋'
   const sub =
-    mode === 'confirm'
-      ? 'Pop in the code we emailed you.'
-      : "Peeking to see if it's really you… 👀"
+    mode === 'confirm' ? 'Pop in the code we emailed you.' : "Peeking to see if it's really you… 👀"
   const submitLabel =
-    mode === 'sign-up' ? 'Create account ✨' : mode === 'confirm' ? 'Confirm code ✨' : 'Let me in ✨'
+    mode === 'sign-up'
+      ? 'Create account ✨'
+      : mode === 'confirm'
+        ? 'Confirm code ✨'
+        : 'Let me in ✨'
 
   return (
     <div
