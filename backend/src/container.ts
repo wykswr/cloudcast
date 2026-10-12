@@ -10,7 +10,10 @@ import type { StreamSigner } from './services/cloudfront'
 export type AppContainer = {
   settings: Settings
   uploadService: Pick<UploadService, 'initiateUpload' | 'presignPart' | 'completeUpload'>
-  videoService: Pick<VideoService, 'listUserVideos' | 'loadOwnedVideo' | 'updateVideo' | 'deleteVideo'>
+  videoService: Pick<
+    VideoService,
+    'listUserVideos' | 'loadOwnedVideo' | 'updateVideo' | 'deleteVideo'
+  >
   streamSigner: StreamSigner
   tokenVerifier: TokenVerifier
 }

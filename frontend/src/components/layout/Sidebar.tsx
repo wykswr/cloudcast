@@ -2,6 +2,7 @@ import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../context/auth-context'
 import { useVideos } from '../../context/videos-context'
 import { formatBytes } from '../../utils/format'
+import { isInFlight } from '../../utils/status'
 
 const STORAGE_QUOTA_BYTES = 20 * 1024 ** 3 // 20 GB
 
@@ -21,9 +22,7 @@ function Sidebar() {
   const { videos } = useVideos()
 
   const favorites = videos.filter((v) => v.favorite).length
-  const processing = videos.filter(
-    (v) => v.status === 'processing' || v.status === 'uploading',
-  ).length
+  const processing = videos.filter(isInFlight).length
   const used = videos.reduce((sum, v) => sum + (v.sizeBytes ?? 0), 0)
   const usedPct = Math.min(100, Math.round((used / STORAGE_QUOTA_BYTES) * 100))
 
@@ -58,9 +57,7 @@ function Sidebar() {
           >
             CloudCast
           </b>
-          <small className="block text-[10px] text-sakura-ink-soft">
-            safe &amp; sparkly ✨
-          </small>
+          <small className="block text-[10px] text-sakura-ink-soft">safe &amp; sparkly ✨</small>
         </div>
       </div>
 
@@ -95,9 +92,7 @@ function Sidebar() {
       >
         <div className="mb-2 flex justify-between text-xs text-sakura-ink-soft">
           <span>Storage</span>
-          <b className="text-sakura-ink">
-            {formatBytes(used)} / 20 GB
-          </b>
+          <b className="text-sakura-ink">{formatBytes(used)} / 20 GB</b>
         </div>
         <div className="h-2.5 overflow-hidden rounded-full bg-[#ffe1ea]">
           <span
@@ -121,9 +116,7 @@ function Sidebar() {
           🌸
         </div>
         <div className="min-w-0 flex-1">
-          <b className="block truncate text-[13px]">
-            {user?.email?.split('@')[0] ?? 'You'}
-          </b>
+          <b className="block truncate text-[13px]">{user?.email?.split('@')[0] ?? 'You'}</b>
           <small className="block truncate text-[11px] text-sakura-ink-soft">
             {user?.email ?? user?.id}
           </small>

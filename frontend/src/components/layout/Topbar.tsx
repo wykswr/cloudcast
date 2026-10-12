@@ -14,9 +14,7 @@ function Topbar({ title, subtitle, search, onSearchChange, onUpload }: TopbarPro
     >
       <div className="min-w-0">
         <b className="block font-display text-xl text-sakura-ink">{title}</b>
-        {subtitle && (
-          <span className="text-[13px] text-sakura-ink-soft">{subtitle}</span>
-        )}
+        {subtitle && <span className="text-[13px] text-sakura-ink-soft">{subtitle}</span>}
       </div>
 
       {onSearchChange && (

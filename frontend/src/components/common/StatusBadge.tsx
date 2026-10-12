@@ -1,10 +1,10 @@
-import type { VideoItem } from '../../types'
+import type { VideoStatus } from '../../types'
 
 type StatusBadgeProps = {
-  status: VideoItem['status']
+  status: VideoStatus
 }
 
-const STATUS_META: Record<string, { label: string; emoji: string; className: string }> = {
+const STATUS_META: Record<VideoStatus, { label: string; emoji: string; className: string }> = {
   ready: { label: 'ready', emoji: '✌️', className: 'bg-sakura-ready text-white' },
   processing: { label: 'cooking', emoji: '🍳', className: 'bg-sakura-proc text-white' },
   uploading: { label: 'uploading', emoji: '⬆️', className: 'bg-sakura-sky text-white' },
@@ -12,11 +12,7 @@ const STATUS_META: Record<string, { label: string; emoji: string; className: str
 }
 
 function StatusBadge({ status }: StatusBadgeProps) {
-  const meta = STATUS_META[status] ?? {
-    label: status,
-    emoji: '☁️',
-    className: 'bg-sakura-ink-soft text-white',
-  }
+  const meta = STATUS_META[status]
   return (
     <span className={`sk-chip ${meta.className}`}>
       <span aria-hidden>{meta.emoji}</span>

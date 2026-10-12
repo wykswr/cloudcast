@@ -6,7 +6,9 @@ import { createContainer } from './container'
 import type { AppContainer } from './container'
 import { getSettings } from './config'
 
-export function createLambdaHandler(factory: () => AppContainer = () => createContainer(getSettings())) {
+export function createLambdaHandler(
+  factory: () => AppContainer = () => createContainer(getSettings()),
+) {
   let adapter: ReturnType<typeof handle> | undefined
   return async (event: APIGatewayProxyEvent, context: Context) => {
     adapter ??= handle(createApp(factory()))

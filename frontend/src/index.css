@@ -1,5 +1,5 @@
-@import url("https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap");
-@import "tailwindcss";
+@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap');
+@import 'tailwindcss';
 
 /* ---- Sakura design tokens ---- */
 @theme {
@@ -15,8 +15,12 @@
   --color-sakura-fail: #fb7185;
   --color-sakura-app: #fbf3f8;
 
-  --font-display: "Baloo 2", system-ui, sans-serif;
-  --font-body: "M PLUS Rounded 1c", system-ui, sans-serif;
+  /* Shared elevations: shadow-sk-soft (chips, small buttons), shadow-sk-panel (large surfaces). */
+  --shadow-sk-soft: 0 4px 12px rgba(167, 139, 250, 0.18);
+  --shadow-sk-panel: 0 18px 40px -20px rgba(255, 93, 143, 0.4);
+
+  --font-display: 'Baloo 2', system-ui, sans-serif;
+  --font-body: 'M PLUS Rounded 1c', system-ui, sans-serif;
 }
 
 :root {
@@ -39,7 +43,10 @@ body {
   min-height: 100vh;
 }
 
-h1, h2, h3, h4 {
+h1,
+h2,
+h3,
+h4 {
   font-family: var(--font-display);
 }
 
@@ -47,7 +54,9 @@ h1, h2, h3, h4 {
 @layer components {
   .sk-card {
     @apply rounded-3xl bg-white p-6;
-    box-shadow: 0 18px 40px -20px rgba(255, 93, 143, 0.4), 0 2px 0 #ffe4ee inset;
+    box-shadow:
+      var(--shadow-sk-panel),
+      0 2px 0 #ffe4ee inset;
   }
 
   .sk-btn {
@@ -57,7 +66,9 @@ h1, h2, h3, h4 {
   .sk-btn-primary {
     @apply text-white;
     background: linear-gradient(120deg, var(--color-sakura-pink-deep), var(--color-sakura-lav));
-    box-shadow: 0 8px 18px -8px rgba(255, 93, 143, 0.6), 0 3px 0 #e0428f;
+    box-shadow:
+      0 8px 18px -8px rgba(255, 93, 143, 0.6),
+      0 3px 0 #e0428f;
   }
   .sk-btn-primary:active {
     transform: translateY(2px);
@@ -99,8 +110,13 @@ h1, h2, h3, h4 {
 
 /* Gentle mascot bob used across empty/idle states. */
 @keyframes sk-bob {
-  0%, 100% { transform: translateY(0) rotate(-4deg); }
-  50% { transform: translateY(-10px) rotate(4deg); }
+  0%,
+  100% {
+    transform: translateY(0) rotate(-4deg);
+  }
+  50% {
+    transform: translateY(-10px) rotate(4deg);
+  }
 }
 .sk-bob {
   display: inline-block;

@@ -17,8 +17,12 @@ const envSchema = z.object({
   JWKS_CACHE_SECONDS: z.coerce.number().int().default(3600),
   MULTIPART_URL_EXPIRATION_SECONDS: z.coerce.number().int().default(3600),
   STREAM_URL_TTL_MINUTES: z.coerce.number().int().default(60),
-  STORAGE_QUOTA_BYTES: z.coerce.number().int().default(20 * 1024 ** 3),
+  STORAGE_QUOTA_BYTES: z.coerce
+    .number()
+    .int()
+    .default(20 * 1024 ** 3),
   CORS_ALLOW_ORIGINS: z.string().default('http://localhost:5173'),
+  PORT: z.coerce.number().int().default(8000),
 })
 export type Settings = z.infer<typeof envSchema>
 export function getSettings(env: NodeJS.ProcessEnv = process.env): Settings {

@@ -1,11 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import Hls from 'hls.js'
-import type {
-  HlsConfig,
-  LoaderContext,
-  LoaderConfiguration,
-  LoaderCallbacks,
-} from 'hls.js'
+import type { HlsConfig, LoaderContext, LoaderConfiguration, LoaderCallbacks } from 'hls.js'
 import TouchControls from './TouchControls'
 
 type VideoPlayerProps = {

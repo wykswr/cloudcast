@@ -10,5 +10,7 @@ await build({
   format: 'esm',
   sourcemap: true,
   // Some AWS credential providers still use CommonJS require internally.
-  banner: { js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);" },
+  banner: {
+    js: "import { createRequire } from 'node:module'; const require = createRequire(import.meta.url);",
+  },
 })

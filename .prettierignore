@@ -1,0 +1,10 @@
+# Generated or vendored
+pnpm-lock.yaml
+**/dist/
+.aws-sam/
+coverage/
+
+# Prose and CloudFormation (custom YAML tags) are formatted by hand
+*.md
+*.yaml
+*.yml

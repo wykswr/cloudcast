@@ -1,10 +1,4 @@
-import {
-  useCallback,
-  useEffect,
-  useMemo,
-  useState,
-  type ReactNode,
-} from 'react'
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react'
 import { fetchAuthSession, getCurrentUser, signOut } from 'aws-amplify/auth'
 import type { AuthUser } from '../types'
 import { AuthContext } from './auth-context'

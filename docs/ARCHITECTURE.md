@@ -41,55 +41,35 @@ CloudCast is a serverless-style video hosting platform that enables:
 
 ## System Architecture
 
-```
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                                   FRONTEND                                       │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │  React + TypeScript + Vite                                               │    │
-│  │  ├── AWS Amplify Auth (Cognito SDK)                                     │    │
-│  │  ├── Multipart Upload Client (chunked to S3)                            │    │
-│  │  └── HLS.js Video Player                                                │    │
-│  └─────────────────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                        │
-                                        │ HTTP/HTTPS
-                                        ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                                  BACKEND API                                     │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │  Hono Server                                                             │    │
-│  │  ├── JWT Verification (Cognito JWKS)                                    │    │
-│  │  ├── Upload Service (S3 multipart orchestration)                        │    │
-│  │  ├── Video Service (DynamoDB CRUD)                                      │    │
-│  │  └── CloudFront Signer (RSA signed URLs)                                │    │
-│  └─────────────────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                        │
-                    ┌───────────────────┼───────────────────┐
-                    ▼                   ▼                   ▼
-            ┌──────────────┐    ┌──────────────┐    ┌──────────────┐
-            │   Cognito    │    │   DynamoDB   │    │      S3      │
-            │  User Pool   │    │   Tables     │    │   Buckets    │
-            └──────────────┘    └──────────────┘    └──────────────┘
-                                                           │
-                                                           │ EventBridge
-                                                           ▼
-┌─────────────────────────────────────────────────────────────────────────────────┐
-│                             PROCESSING PIPELINE                                  │
-│  ┌─────────────────────────────────────────────────────────────────────────┐    │
-│  │  AWS Step Functions State Machine                                        │    │
-│  │  ├── ExtractContext (Parse S3 event)                                    │    │
-│  │  ├── CreateMediaConvertJob (Transcode to HLS)                           │    │
-│  │  ├── MarkReady (Update DynamoDB on success)                             │    │
-│  │  └── MarkFailed (Update DynamoDB on error)                              │    │
-│  └─────────────────────────────────────────────────────────────────────────┘    │
-└─────────────────────────────────────────────────────────────────────────────────┘
-                                        │
-                                        ▼
-                                ┌──────────────┐
-                                │  CloudFront  │
-                                │     CDN      │
-                                └──────────────┘
+```mermaid
+flowchart TD
+    subgraph FE["Frontend"]
+        FEapp["React + TypeScript + Vite<br/>AWS Amplify Auth (Cognito SDK)<br/>Multipart Upload Client (chunked to S3)<br/>HLS.js Video Player"]
+    end
+
+    subgraph API["Backend API"]
+        APIapp["Hono Server<br/>JWT Verification (Cognito JWKS)<br/>Upload Service (S3 multipart orchestration)<br/>Video Service (DynamoDB CRUD)<br/>CloudFront Signer (RSA signed URLs)"]
+    end
+
+    Cognito["Cognito<br/>User Pool"]
+    DDB["DynamoDB<br/>Tables"]
+    S3["S3<br/>Buckets"]
+
+    subgraph PIPE["Processing Pipeline (AWS Step Functions)"]
+        direction TB
+        Extract["ExtractContext<br/>Parse S3 event"] --> MC["CreateMediaConvertJob<br/>Transcode to HLS"]
+        MC -->|success| Ready["MarkReady<br/>Update DynamoDB"]
+        MC -->|error| Failed["MarkFailed<br/>Update DynamoDB"]
+    end
+
+    CDN["CloudFront<br/>CDN"]
+
+    FE -->|HTTP/HTTPS| API
+    API --> Cognito
+    API --> DDB
+    API --> S3
+    S3 -->|EventBridge| PIPE
+    PIPE --> CDN
 ```
 
 ---
@@ -134,27 +114,28 @@ cloudcast-processed-{env}/
 
 ### 1. Upload Flow (Multipart)
 
-```
-┌──────────┐     POST /videos/upload/init      ┌──────────┐
-│          │ ─────────────────────────────────▶│          │
-│          │     { uploadId, videoId }         │          │
-│          │ ◀─────────────────────────────────│          │
-│          │                                   │          │
-│          │     POST /videos/upload/sign-part │          │
-│ Frontend │ ─────────────────────────────────▶│ Backend  │───▶ DynamoDB
-│          │     { presignedUrl }              │  (API)   │     (Videos)
-│          │ ◀─────────────────────────────────│          │
-│          │                                   │          │
-│          │        PUT (chunk data)           │          │
-│          │ ───────────────────────────────────────────────▶ S3 (Raw)
-│          │        { ETag }                   │          │
-│          │ ◀───────────────────────────────────────────────
-│          │                                   │          │
-│          │     POST /videos/upload/complete  │          │
-│          │ ─────────────────────────────────▶│          │
-│          │     { status: "processing" }      │          │
-│          │ ◀─────────────────────────────────│          │
-└──────────┘                                   └──────────┘
+```mermaid
+sequenceDiagram
+    participant F as Frontend
+    participant B as Backend (API)
+    participant D as DynamoDB (Videos)
+    participant S as S3 (Raw)
+
+    F->>B: POST /videos/upload/init
+    B->>D: Create video record
+    B-->>F: { uploadId, videoId }
+
+    loop each chunk
+        F->>B: POST /videos/upload/sign-part
+        B-->>F: { presignedUrl }
+        F->>S: PUT (chunk data)
+        S-->>F: { ETag }
+    end
+
+    F->>B: POST /videos/upload/complete
+    B->>S: Complete multipart upload
+    B->>D: status = processing
+    B-->>F: { status: "processing" }
 ```
 
 **Sequence:**
@@ -165,38 +146,14 @@ cloudcast-processed-{env}/
 
 ### 2. Processing Flow (Step Functions)
 
-```
-S3 Raw Bucket                    EventBridge                   Step Functions
-     │                                │                              │
-     │  Object Created Event          │                              │
-     └───────────────────────────────▶│                              │
-                                      │  Trigger State Machine       │
-                                      └─────────────────────────────▶│
-                                                                     │
-                                                                     ▼
-                                                           ┌─────────────────┐
-                                                           │ ExtractContext  │
-                                                           │ (Parse S3 key)  │
-                                                           └────────┬────────┘
-                                                                    │
-                                                                    ▼
-                                                    ┌───────────────────────────────┐
-                                                    │   CreateMediaConvertJob       │
-                                                    │   (aws-sdk:mediaconvert)      │
-                                                    │   - Input: S3 raw key         │
-                                                    │   - Output: HLS to processed  │
-                                                    │   - UserMetadata: video_id    │
-                                                    └───────────────┬───────────────┘
-                                                                    │
-                                           ┌────────────────────────┴────────────────────────┐
-                                           │                                                 │
-                                    Success│                                                 │Error
-                                           ▼                                                 ▼
-                                 ┌─────────────────┐                               ┌─────────────────┐
-                                 │   MarkReady     │                               │   MarkFailed    │
-                                 │   (DynamoDB)    │                               │   (DynamoDB)    │
-                                 │   status=ready  │                               │   status=failed │
-                                 └─────────────────┘                               └─────────────────┘
+```mermaid
+flowchart TD
+    S3["S3 Raw Bucket"] -->|Object Created event| EB["EventBridge"]
+    EB -->|Trigger state machine| SF["Step Functions"]
+    SF --> Extract["ExtractContext<br/>Parse S3 key"]
+    Extract --> MC["CreateMediaConvertJob (aws-sdk:mediaconvert)<br/>Input: S3 raw key<br/>Output: HLS to processed bucket<br/>UserMetadata: video_id"]
+    MC -->|Success| Ready["MarkReady (DynamoDB)<br/>status=ready"]
+    MC -->|Error| Failed["MarkFailed (DynamoDB)<br/>status=failed"]
 ```
 
 **MediaConvert Configuration:**
@@ -207,22 +164,22 @@ S3 Raw Bucket                    EventBridge                   Step Functions
 
 ### 3. Playback Flow (Secure Streaming)
 
-```
-┌──────────┐    GET /videos/{id}/stream    ┌──────────┐
-│          │ ─────────────────────────────▶│          │
-│          │                               │          │
-│          │                               │ Backend  │───▶ DynamoDB (verify ownership)
-│          │                               │          │
-│          │    { streamUrl: signed URL }  │          │───▶ CloudFront Signer
-│          │ ◀─────────────────────────────│          │     (RSA private key)
-│ Frontend │                               └──────────┘
-│          │
-│  (HLS.js)│     GET https://cdn.../hls/playlist.m3u8?Signature=...
-│          │ ──────────────────────────────────────────────────────▶ CloudFront
-│          │                                                              │
-│          │     HLS segments (.ts)                                       │
-│          │ ◀──────────────────────────────────────────────────────────▶│
-└──────────┘                                                        S3 (Processed)
+```mermaid
+sequenceDiagram
+    participant F as Frontend (HLS.js)
+    participant B as Backend
+    participant D as DynamoDB
+    participant CF as CloudFront
+    participant S as S3 (Processed)
+
+    F->>B: GET /videos/{id}/stream
+    B->>D: Verify ownership
+    B->>B: Sign URL with CloudFront RSA private key
+    B-->>F: { streamUrl: signed URL }
+    F->>CF: GET https://cdn.../hls/playlist.m3u8?Signature=...
+    CF->>S: Fetch playlist and segments (via OAC)
+    S-->>CF: HLS segments (.ts)
+    CF-->>F: HLS segments (.ts)
 ```
 
 **Security:**
@@ -246,14 +203,17 @@ cloudcast/
 │   ├── scripts/build.mjs  # Self-contained Lambda esbuild bundle
 │   ├── test/              # Vitest API, auth, AWS, signing, and workflow tests
 │   └── src/
-│       ├── app.ts         # Injected app factory and documentation
-│       ├── server.ts      # Node.js local entry point (:8000)
+│       ├── app.ts         # Injected app factory, error handling
+│       ├── docs.ts        # OpenAPI, Swagger UI, and ReDoc routes
+│       ├── logger.ts      # Structured JSON logging
+│       ├── server.ts      # Node.js local entry point (PORT, default 8000)
 │       ├── lambda.ts      # Cached official Hono Lambda adapter
 │       ├── container.ts   # Client/service dependency wiring
 │       ├── auth.ts        # Cognito JWT verification (jose)
 │       ├── aws.ts         # AWS SDK v3 client factories
 │       ├── config.ts      # Zod settings (environment variables)
-│       ├── routes/        # OpenAPI routes and authorization
+│       ├── middleware/    # Cognito auth, JSON body, and CORS middleware
+│       ├── routes/        # OpenAPI route definitions and handlers
 │       └── services/      # Upload, video repository, CloudFront signing
 │
 ├── packages/contracts/    # Shared Zod API schemas and TypeScript types
@@ -264,6 +224,7 @@ cloudcast/
 ├── frontend/              # React SPA
 │   ├── package.json      # pnpm workspace dependencies
 │   ├── vite.config.ts    # Vite build configuration
+│   ├── test/             # Vitest tests for lib/, utils/, and gesture helpers
 │   └── src/
 │       ├── main.tsx      # App bootstrap + Amplify init
 │       ├── amplify.ts    # AWS Amplify configuration
@@ -400,17 +361,11 @@ Authorization: Bearer <Cognito ID Token>
 
 ### Authentication Layer
 
-```
-┌─────────────┐      ┌─────────────┐      ┌─────────────┐
-│   Amplify   │─────▶│   Cognito   │─────▶│    JWT      │
-│     SDK     │      │  User Pool  │      │   Token     │
-└─────────────┘      └─────────────┘      └─────────────┘
-                                                │
-                                                ▼
-                                        ┌─────────────┐
-                                        │   Hono      │
-                                        │   (JWKS)    │
-                                        └─────────────┘
+```mermaid
+flowchart LR
+    Amplify["Amplify SDK"] --> Cognito["Cognito User Pool"]
+    Cognito --> JWT["JWT Token"]
+    JWT --> Hono["Hono (JWKS)"]
 ```
 
 - Frontend uses AWS Amplify to authenticate with Cognito

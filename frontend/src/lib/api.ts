@@ -1,31 +1,40 @@
 import { fetchAuthSession } from 'aws-amplify/auth'
 import type {
-  VideoItem, VideoListResponse, StreamResponse, UploadInitRequest,
-  UploadInitResponse, UploadPartRequest, CompleteUploadRequest,
-  SignPartResponse, UpdateVideoRequest, CompleteUploadResponse, DeleteVideoResponse,
+  VideoItem,
+  VideoListResponse,
+  StreamResponse,
+  UploadInitRequest,
+  UploadInitResponse,
+  UploadPartRequest,
+  CompleteUploadRequest,
+  SignPartResponse,
+  UpdateVideoRequest,
+  CompleteUploadResponse,
+  DeleteVideoResponse,
 } from '@cloudcast/contracts'
 export type {
-  UploadInitRequest, UploadInitResponse, UploadPartRequest, UploadPart,
-  CompleteUploadRequest, SignPartResponse, UpdateVideoRequest,
+  UploadInitRequest,
+  UploadInitResponse,
+  UploadPartRequest,
+  UploadPart,
+  CompleteUploadRequest,
+  SignPartResponse,
+  UpdateVideoRequest,
 } from '@cloudcast/contracts'
 
-const API_BASE_URL = (
-  import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000'
-).replace(/\/$/, '')
+const API_BASE_URL = (import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000').replace(
+  /\/$/,
+  '',
+)
 
 type ApiRequestOptions = {
   method?: string
   body?: unknown
 }
 
-async function apiRequest<T>(
-  path: string,
-  options: ApiRequestOptions = {},
-): Promise<T> {
+async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Promise<T> {
   const session = await fetchAuthSession()
-  const token =
-    session.tokens?.idToken?.toString() ??
-    session.tokens?.accessToken?.toString()
+  const token = session.tokens?.idToken?.toString() ?? session.tokens?.accessToken?.toString()
 
   if (!token) {
     throw new Error('Sign in to continue')
@@ -58,9 +67,7 @@ export const fetchVideos = async (): Promise<VideoItem[]> => {
   return data.items
 }
 
-export const requestStream = async (
-  videoId: string,
-): Promise<StreamResponse> => {
+export const requestStream = async (videoId: string): Promise<StreamResponse> => {
   return apiRequest(`/videos/${videoId}/stream`)
 }
 
