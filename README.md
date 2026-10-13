@@ -164,3 +164,7 @@ From `template.yaml`:
 - **CORS errors in the deployed API from localhost:** the API Gateway CORS origin is wired to the deployed frontend CloudFront domain. For local development, run the backend locally (recommended) or update the SAM template CORS config to include `http://localhost:5173`.
 - **Step Functions “failed” status:** check the execution details for the `ProcessingStateMachine` in AWS Console (MediaConvert permissions/configuration errors show up there).
 - **Signed URL playback fails:** confirm `MediaCloudFrontDomain`, `MediaCloudFrontKeyId`, and that the private key SSM parameter referenced by `CLOUDFRONT_PRIVATE_KEY_SSM_NAME` exists and decrypts.
+
+## License
+
+[MIT](LICENSE)
