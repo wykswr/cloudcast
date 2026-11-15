@@ -2,12 +2,15 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { fetchAuthSession } from 'aws-amplify/auth'
 import {
   completeUpload,
-  fetchVideos,
+  fetchSummary,
+  fetchVideo,
+  fetchVideoPage,
   initUpload,
   removeVideo,
   requestStream,
   signUploadPart,
   updateVideo,
+  videoListPath,
 } from '../src/lib/api'
 
 vi.mock('aws-amplify/auth', () => ({ fetchAuthSession: vi.fn() }))
@@ -40,12 +43,16 @@ describe('API client', () => {
 
   it('maps each call to its endpoint', async () => {
     fetchMock.mockImplementation(async () => new Response('{}'))
+    await fetchVideo('v 1')
+    await fetchSummary()
     await requestStream('v1')
     await removeVideo('v1')
     await initUpload({ filename: 'a.mp4', contentType: 'video/mp4' })
     await signUploadPart({ videoId: 'v1', uploadId: 'u', partNumber: 1 })
     await completeUpload({ videoId: 'v1', uploadId: 'u', parts: [] })
     expect(fetchMock.mock.calls.map(([url, init]) => `${init?.method} ${url}`)).toEqual([
+      'GET http://localhost:8000/videos/v%201',
+      'GET http://localhost:8000/videos/summary',
       'GET http://localhost:8000/videos/v1/stream',
       'DELETE http://localhost:8000/videos/v1',
       'POST http://localhost:8000/videos/upload/init',
@@ -54,23 +61,37 @@ describe('API client', () => {
     ])
   })
 
-  it('unwraps list responses', async () => {
+  it('requests library pages and defaults a missing cursor to null', async () => {
     fetchMock.mockResolvedValue(new Response(JSON.stringify({ items: [{ id: 'v1' }] })))
-    expect(await fetchVideos()).toEqual([{ id: 'v1' }])
+    expect(await fetchVideoPage({ filter: 'favorites', q: ' lis ', limit: 24 })).toEqual({
+      items: [{ id: 'v1' }],
+      nextCursor: null,
+    })
+    expect(fetchMock.mock.calls[0][0]).toBe(
+      'http://localhost:8000/videos?limit=24&q=lis&filter=favorites',
+    )
+  })
+
+  it('leaves defaults and blanks out of list query strings', () => {
+    expect(videoListPath()).toBe('/videos')
+    expect(videoListPath({ filter: 'all', order: 'newest', q: '   ' })).toBe('/videos')
+    expect(videoListPath({ cursor: 'a b', order: 'oldest', filter: 'in-progress' })).toBe(
+      '/videos?cursor=a+b&filter=in-progress&order=oldest',
+    )
   })
 
   it('surfaces the API detail message, or the status when there is none', async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ detail: 'Video not found' }), { status: 404 }),
     )
-    await expect(fetchVideos()).rejects.toThrow('Video not found')
+    await expect(fetchVideoPage()).rejects.toThrow('Video not found')
     fetchMock.mockResolvedValueOnce(new Response('', { status: 502 }))
-    await expect(fetchVideos()).rejects.toThrow('Request failed with status 502')
+    await expect(fetchVideoPage()).rejects.toThrow('Request failed with status 502')
   })
 
   it('refuses to call the API without a session', async () => {
     vi.mocked(fetchAuthSession).mockResolvedValue(session())
-    await expect(fetchVideos()).rejects.toThrow('Sign in to continue')
+    await expect(fetchVideoPage()).rejects.toThrow('Sign in to continue')
     expect(fetchMock).not.toHaveBeenCalled()
   })
 })

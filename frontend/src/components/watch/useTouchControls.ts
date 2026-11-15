@@ -27,7 +27,7 @@ export type TouchControlsOptions = {
 }
 
 /** Mirrors the <video> element's play state, position and duration into React state. */
-function usePlaybackState(videoRef: RefObject<HTMLVideoElement | null>) {
+export function usePlaybackState(videoRef: RefObject<HTMLVideoElement | null>) {
   const [playing, setPlaying] = useState(false)
   const [currentTime, setCurrentTime] = useState(0)
   const [duration, setDuration] = useState(0)

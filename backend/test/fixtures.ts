@@ -35,7 +35,14 @@ export function mockContainer(): AppContainer {
       completeUpload: vi.fn().mockResolvedValue(undefined),
     },
     videoService: {
-      listUserVideos: vi.fn().mockResolvedValue([video]),
+      listVideoPage: vi.fn().mockResolvedValue({ items: [video], nextCursor: null }),
+      getSummary: vi.fn().mockResolvedValue({
+        total: 1,
+        favorites: 0,
+        inProgress: 0,
+        storageUsedBytes: 0,
+        storageQuotaBytes: settings.STORAGE_QUOTA_BYTES,
+      }),
       loadOwnedVideo: vi.fn().mockResolvedValue(video),
       updateVideo: vi.fn().mockResolvedValue(video),
       deleteVideo: vi.fn().mockResolvedValue(undefined),

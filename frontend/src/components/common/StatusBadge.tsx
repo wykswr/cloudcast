@@ -1,22 +1,20 @@
+import { STATUS_LABELS } from '../../utils/status'
 import type { VideoStatus } from '../../types'
 
-type StatusBadgeProps = {
-  status: VideoStatus
+const TONES: Record<VideoStatus, string> = {
+  ready: 'bg-good-soft text-good',
+  uploading: 'bg-accent-soft text-accent',
+  processing: 'bg-warn-soft text-warn',
+  failed: 'bg-bad-soft text-bad',
 }
 
-const STATUS_META: Record<VideoStatus, { label: string; emoji: string; className: string }> = {
-  ready: { label: 'ready', emoji: '✌️', className: 'bg-sakura-ready text-white' },
-  processing: { label: 'cooking', emoji: '🍳', className: 'bg-sakura-proc text-white' },
-  uploading: { label: 'uploading', emoji: '⬆️', className: 'bg-sakura-sky text-white' },
-  failed: { label: 'oops', emoji: '😢', className: 'bg-sakura-fail text-white' },
-}
-
-function StatusBadge({ status }: StatusBadgeProps) {
-  const meta = STATUS_META[status]
+function StatusBadge({ status }: { status: VideoStatus }) {
   return (
-    <span className={`sk-chip ${meta.className}`}>
-      <span aria-hidden>{meta.emoji}</span>
-      {meta.label}
+    <span
+      className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-0.5 text-xs font-semibold ${TONES[status]}`}
+    >
+      <span className="size-1.5 rounded-full bg-current" aria-hidden />
+      {STATUS_LABELS[status]}
     </span>
   )
 }

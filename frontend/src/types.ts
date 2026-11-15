@@ -1,4 +1,4 @@
-export type AuthMode = 'sign-in' | 'sign-up' | 'confirm'
+export type AuthMode = 'sign-in' | 'sign-up' | 'confirm' | 'forgot' | 'reset'
 
 export type AuthUser = {
   id: string
@@ -11,16 +11,7 @@ export type UploadState = {
   stage: 'idle' | 'uploading' | 'success' | 'error'
   message?: string
   percent: number
+  /** Bytes in finished parts. */
+  sentBytes?: number
   videoId?: string
-}
-
-export type UploadFormState = {
-  title: string
-  file: File | null
-}
-
-export type StreamSelection = {
-  url: string
-  title?: string | null
-  videoId: string
 }

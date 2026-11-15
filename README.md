@@ -153,7 +153,7 @@ From `template.yaml`:
 - API: API Gateway + Lambda (Hono on Node.js 24) with Cognito authorizer
 - Auth: Cognito User Pool + User Pool Client
 - Storage: `cloudcast-raw-{env}` and `cloudcast-processed-{env}` S3 buckets
-- DB: `CloudCast-Users-{env}` and `CloudCast-Videos-{env}` DynamoDB tables (+ `VideoIdIndex` GSI)
+- DB: `CloudCast-Users-{env}` and `CloudCast-Videos-{env}` DynamoDB tables (+ `VideoIdIndex` and `UserCreatedIndex` GSIs)
 - Processing: Step Functions state machine triggered by raw-bucket `Object Created` events (MediaConvert → DynamoDB update)
 - CDN:
   - CloudFront distribution for processed HLS (uses Trusted Key Groups for signed URLs)

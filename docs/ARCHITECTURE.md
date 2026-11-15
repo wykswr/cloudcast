@@ -265,7 +265,11 @@ Authorization: Bearer <Cognito ID Token>
 | POST   | `/videos/upload/init`      | Start multipart upload session       |
 | POST   | `/videos/upload/sign-part` | Get presigned URL for chunk upload   |
 | POST   | `/videos/upload/complete`  | Finalize multipart upload            |
-| GET    | `/videos`                  | List user's videos                   |
+| GET    | `/videos`                  | One page of the user's videos (filter, search, order) |
+| GET    | `/videos/summary`          | Library counts and storage used      |
+| GET    | `/videos/{video_id}`       | One video                            |
+| PATCH  | `/videos/{video_id}`       | Rename or favorite a video           |
+| DELETE | `/videos/{video_id}`       | Delete a video and its media         |
 | GET    | `/videos/{video_id}/stream`| Get signed streaming URL             |
 
 ### Request/Response Schemas
@@ -298,6 +302,11 @@ Authorization: Bearer <Cognito ID Token>
 ```
 
 **GET /videos**
+
+Query parameters (all optional): `limit` (1–100, default 24), `cursor` (the previous page's
+`nextCursor`), `q` (case-insensitive title search), `filter` (`all`, `favorites`, `in-progress`,
+`ready`), `order` (`newest`, `oldest`).
+
 ```json
 // Response
 {
@@ -309,8 +318,19 @@ Authorization: Bearer <Cognito ID Token>
       "createdAt": 1700000000,
       "s3KeyHls": "user_id/video_id/hls/playlist.m3u8"
     }
-  ]
+  ],
+  "nextCursor": "eyJ1c2VyX2lkIjoi..." // null on the last page
 }
+```
+
+Pages are read from `UserCreatedIndex`, so a page costs only the items on it. Filters and search are
+DynamoDB filter expressions on that query. If the index is not deployed yet, the API sorts and
+pages in memory instead (and logs a warning).
+
+**GET /videos/summary**
+```json
+// Response
+{ "total": 31, "favorites": 6, "inProgress": 1, "storageUsedBytes": 5740000000, "storageQuotaBytes": 21474836480 }
 ```
 
 **GET /videos/{video_id}/stream**
@@ -343,11 +363,13 @@ Authorization: Bearer <Cognito ID Token>
 | `s3_key_raw` | String |               |
 | `s3_key_hls` | String |               |
 | `status`     | String |               |
+| `title_search` | String | lower-cased title for search |
 | `upload_id`  | String | (temporary)   |
 | `created_at` | Number |               |
 
-**Global Secondary Index:** `VideoIdIndex`
-- Partition Key: `id` (enables lookup by video ID without knowing user)
+**Global Secondary Indexes:**
+- `VideoIdIndex` – Partition Key: `id` (enables lookup by video ID without knowing user)
+- `UserCreatedIndex` – Partition Key: `user_id`, Sort Key: `created_at` (newest-first library pages)
 
 **Status Values:**
 - `uploading` – Multipart upload in progress

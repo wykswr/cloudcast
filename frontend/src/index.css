@@ -1,124 +1,164 @@
-@import url('https://fonts.googleapis.com/css2?family=Baloo+2:wght@500;600;700;800&family=M+PLUS+Rounded+1c:wght@400;500;700&display=swap');
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap');
 @import 'tailwindcss';
 
-/* ---- Sakura design tokens ---- */
+/* ---- CloudCast design tokens ---- */
 @theme {
-  --color-sakura-pink: #ff8fb1;
-  --color-sakura-pink-deep: #ff5d8f;
-  --color-sakura-lav: #a78bfa;
-  --color-sakura-sky: #7dd3fc;
-  --color-sakura-cream: #fff5f7;
-  --color-sakura-ink: #5b4a63;
-  --color-sakura-ink-soft: #8b7a93;
-  --color-sakura-ready: #34d399;
-  --color-sakura-proc: #fbbf24;
-  --color-sakura-fail: #fb7185;
-  --color-sakura-app: #fbf3f8;
+  --color-ink: #14161a;
+  --color-ink-2: #4a505a;
+  --color-ink-3: #646a75;
+  --color-canvas: #f5f5f3;
+  --color-panel: #fbfbfa;
+  --color-line: #e4e4df;
+  --color-line-strong: #dcdcd6;
+  --color-fill: #eaeae6;
+  --color-hover: #ededea;
 
-  /* Shared elevations: shadow-sk-soft (chips, small buttons), shadow-sk-panel (large surfaces). */
-  --shadow-sk-soft: 0 4px 12px rgba(167, 139, 250, 0.18);
-  --shadow-sk-panel: 0 18px 40px -20px rgba(255, 93, 143, 0.4);
+  --color-accent: #2b4bee;
+  --color-accent-hover: #1f3ad1;
+  --color-accent-soft: #eceffe;
+  --color-accent-ink: #1e2f8f;
+  --color-accent-light: #a9b8ff;
 
-  --font-display: 'Baloo 2', system-ui, sans-serif;
-  --font-body: 'M PLUS Rounded 1c', system-ui, sans-serif;
+  --color-good: #13744a;
+  --color-good-soft: #e9f6ef;
+  --color-warn: #a14a00;
+  --color-warn-soft: #fff1e2;
+  --color-warn-bar: #e08a2e;
+  --color-bad: #c0341d;
+  --color-bad-soft: #fbedea;
+  --color-heart: #e2483d;
+
+  --color-night: #0f1115;
+  --color-night-panel: #181b21;
+  --color-night-line: #2a2e36;
+  --color-night-ink: #f2f3f5;
+  --color-night-muted: #a3a9b4;
+
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-display: 'Space Grotesk', 'Inter', system-ui, sans-serif;
+
+  --shadow-pop: 0 16px 40px rgba(20, 22, 26, 0.14);
+  --shadow-float: 0 20px 50px rgba(20, 22, 26, 0.16);
 }
 
 :root {
-  color: var(--color-sakura-ink);
-  background: var(--color-sakura-app);
+  color: var(--color-ink);
+  background: var(--color-canvas);
   min-height: 100%;
-}
-
-* {
-  box-sizing: border-box;
+  -webkit-font-smoothing: antialiased;
 }
 
 body {
   margin: 0;
-  font-family: var(--font-body);
-  background: var(--color-sakura-app);
+  font-family: var(--font-sans);
+  background: var(--color-canvas);
 }
 
 #root {
   min-height: 100vh;
 }
 
-h1,
-h2,
-h3,
-h4 {
-  font-family: var(--font-display);
+/* In the base layer so component and utility classes (e.g. `.field`'s ring) can override it. */
+@layer base {
+  button {
+    cursor: pointer;
+  }
+
+  :where(button, a, input, select, textarea, [tabindex]):focus-visible {
+    outline: 2px solid var(--color-accent);
+    outline-offset: 2px;
+  }
 }
 
 /* ---- Reusable component classes (kept here so JSX stays readable) ---- */
 @layer components {
-  .sk-card {
-    @apply rounded-3xl bg-white p-6;
-    box-shadow:
-      var(--shadow-sk-panel),
-      0 2px 0 #ffe4ee inset;
+  .btn {
+    @apply inline-flex h-11 items-center justify-center gap-2 rounded-[10px] px-4 text-sm font-semibold
+      whitespace-nowrap transition-colors disabled:cursor-not-allowed disabled:opacity-60;
   }
-
-  .sk-btn {
-    @apply inline-flex items-center justify-center gap-2 rounded-full px-4 py-2.5
-      font-display text-sm font-bold transition disabled:cursor-not-allowed disabled:opacity-60;
+  .btn-primary {
+    @apply bg-accent text-white hover:bg-accent-hover disabled:hover:bg-accent;
   }
-  .sk-btn-primary {
-    @apply text-white;
-    background: linear-gradient(120deg, var(--color-sakura-pink-deep), var(--color-sakura-lav));
-    box-shadow:
-      0 8px 18px -8px rgba(255, 93, 143, 0.6),
-      0 3px 0 #e0428f;
+  .btn-secondary {
+    @apply border border-line-strong bg-white text-ink hover:bg-[#f2f2ef];
   }
-  .sk-btn-primary:active {
-    transform: translateY(2px);
-    box-shadow: 0 5px 12px -8px rgba(255, 93, 143, 0.6);
+  .btn-danger {
+    @apply bg-bad text-white hover:bg-[#a52b17];
   }
-  .sk-btn-ghost {
-    @apply text-sakura-ink-soft;
-    background: #fff3f8;
+  .icon-btn {
+    @apply grid size-9 shrink-0 place-items-center rounded-lg text-ink-2 transition-colors hover:bg-hover;
   }
-  .sk-btn-danger {
-    @apply text-white;
-    background: linear-gradient(120deg, #fb7185, #f43f5e);
+  .field {
+    @apply h-12 w-full rounded-[10px] border border-[#d9d9d3] bg-white px-3.5 text-[15px] text-ink
+      transition outline-none placeholder:text-ink-3 focus:border-accent focus:ring-4 focus:ring-accent/15;
   }
-
-  .sk-input {
-    @apply w-full rounded-2xl border-2 border-[#ffe1ea] bg-white px-3.5 py-3
-      text-sm text-sakura-ink outline-none transition placeholder:text-sakura-ink-soft/70;
+  .field-invalid {
+    @apply border-bad focus:border-bad focus:ring-bad/15;
   }
-  .sk-input:focus {
-    @apply border-sakura-pink;
+  .label {
+    @apply text-[13px] font-semibold text-ink;
   }
-
-  .sk-nav {
-    @apply flex w-full items-center gap-3 rounded-2xl px-3 py-2.5 text-left
-      text-sm font-bold text-sakura-ink-soft transition;
+  .surface {
+    @apply rounded-[14px] border border-line bg-white;
   }
-  .sk-nav:hover {
-    @apply bg-[#fff3f8] text-sakura-ink;
-  }
-  .sk-nav-active {
-    @apply text-sakura-pink-deep;
-    background: linear-gradient(120deg, #ffe0ec, #efe3ff);
-  }
-
-  .sk-chip {
-    @apply inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-bold;
+  .menu-item {
+    @apply flex h-10 w-full items-center gap-2.5 rounded-lg px-2.5 text-left text-sm text-ink hover:bg-[#f2f2ef];
   }
 }
 
-/* Gentle mascot bob used across empty/idle states. */
-@keyframes sk-bob {
-  0%,
+@utility font-tabular {
+  font-variant-numeric: tabular-nums;
+}
+
+/* Moving stripes on progress bars that are still working. */
+@keyframes cc-stripe {
+  to {
+    background-position: 24px 0;
+  }
+}
+.cc-busy {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    rgb(255 255 255 / 0.3) 0 6px,
+    transparent 6px 12px
+  );
+  background-size: 24px 100%;
+  animation: cc-stripe 0.9s linear infinite;
+}
+
+/* Loading placeholders. */
+@keyframes cc-shimmer {
+  0% {
+    background-position: -300px 0;
+  }
   100% {
-    transform: translateY(0) rotate(-4deg);
-  }
-  50% {
-    transform: translateY(-10px) rotate(4deg);
+    background-position: 300px 0;
   }
 }
-.sk-bob {
-  display: inline-block;
-  animation: sk-bob 2.6s ease-in-out infinite;
+.cc-skeleton {
+  background: linear-gradient(90deg, #e8e8e4 0, #f3f3f0 40%, #e8e8e4 80%);
+  background-size: 600px 100%;
+  animation: cc-shimmer 1.4s linear infinite;
+}
+
+@keyframes cc-rise {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+.cc-rise {
+  animation: cc-rise 0.2s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cc-busy,
+  .cc-skeleton,
+  .cc-rise {
+    animation: none;
+  }
 }

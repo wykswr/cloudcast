@@ -13,7 +13,14 @@ import {
   DeleteObjectsCommand,
   ListObjectsV2Command,
 } from '@aws-sdk/client-s3'
-import { VideoRepository, VideoService } from '../src/services/videos'
+import {
+  VideoRepository,
+  VideoService,
+  decodeCursor,
+  encodeCursor,
+  listFilter,
+  matchesListQuery,
+} from '../src/services/videos'
 import type { PartPresigner } from '../src/services/uploads'
 import { UploadService } from '../src/services/uploads'
 import { ApiError } from '../src/errors'
@@ -99,9 +106,18 @@ describe('DynamoDB/video services', () => {
     dbSend
       .mockResolvedValueOnce({ Items: [video] })
       .mockResolvedValueOnce({ Attributes: { ...video, favorite: false } })
-    await videos.updateVideo(user, 'video', { favorite: false, title: '' })
+    await videos.updateVideo(user, 'video', { favorite: false, title: ' Beach DAY ' })
     const command = dbSend.mock.calls[2][0] as unknown as UpdateCommand
-    expect(command.input.ExpressionAttributeValues).toEqual({ ':v0': '', ':v1': false })
+    expect(command.input.ExpressionAttributeNames).toEqual({
+      '#f0': 'title',
+      '#f1': 'title_search',
+      '#f2': 'favorite',
+    })
+    expect(command.input.ExpressionAttributeValues).toEqual({
+      ':v0': ' Beach DAY ',
+      ':v1': 'beach day',
+      ':v2': false,
+    })
     expect(command.input.ReturnValues).toBe('ALL_NEW')
   })
   it('deletes paginated media before the record, then reconciles quota', async () => {
@@ -207,6 +223,8 @@ describe('Multipart uploads', () => {
       duration_seconds: 2,
       source_width: 1920,
       favorite: false,
+      title: 'holiday.final.mp4',
+      title_search: 'holiday.final.mp4',
     })
     expect(item.created_at).toBeCloseTo(Date.now() / 1000, -1)
     expect(s3Send.mock.calls[0][0].input).toMatchObject({
@@ -294,5 +312,215 @@ describe('Multipart uploads', () => {
     ).rejects.toMatchObject({ status: 502, detail: 'Unable to complete upload' })
     expect(dbSend.mock.calls.every(([command]) => !(command instanceof UpdateCommand))).toBe(true)
     logging.mockRestore()
+  })
+})
+
+describe('Library pages, search and summary', () => {
+  const at = (id: string, created_at: number, extra: Record<string, unknown> = {}) => ({
+    ...video,
+    id,
+    created_at,
+    ...extra,
+  })
+  const queryInput = (call: unknown[]) => (call[0] as QueryCommand).input
+
+  it('reads one index page newest first and hands back a cursor for the next', async () => {
+    const { videos, dbSend } = setup()
+    const lastKey = { user_id: 'owner', id: 'b', created_at: 90 }
+    dbSend.mockResolvedValueOnce({ Items: [at('a', 100), at('b', 90)], LastEvaluatedKey: lastKey })
+    const page = await videos.listVideoPage(user, { limit: 2, filter: 'all', order: 'newest' })
+    expect(page.items.map((v) => v.id)).toEqual(['a', 'b'])
+    expect(page.nextCursor).toBe(encodeCursor(lastKey))
+    expect(queryInput(dbSend.mock.calls[0])).toMatchObject({
+      IndexName: 'UserCreatedIndex',
+      KeyConditionExpression: 'user_id = :user_id',
+      ExpressionAttributeValues: { ':user_id': 'owner' },
+      ScanIndexForward: false,
+      Limit: 2,
+    })
+    expect(queryInput(dbSend.mock.calls[0]).FilterExpression).toBeUndefined()
+
+    dbSend.mockResolvedValueOnce({ Items: [at('c', 80)] })
+    const next = await videos.listVideoPage(user, {
+      limit: 2,
+      filter: 'all',
+      order: 'oldest',
+      cursor: page.nextCursor!,
+    })
+    expect(next).toEqual({ items: [at('c', 80)], nextCursor: null })
+    expect(queryInput(dbSend.mock.calls[1])).toMatchObject({
+      ExclusiveStartKey: lastKey,
+      ScanIndexForward: true,
+    })
+  })
+
+  it('reads ahead for filtered searches, trims to the page size and stops after a few rounds', async () => {
+    const { repository, dbSend } = setup()
+    dbSend
+      .mockResolvedValueOnce({
+        Items: [at('a', 100)],
+        LastEvaluatedKey: { user_id: 'owner', id: 'x', created_at: 95 },
+      })
+      .mockResolvedValueOnce({
+        Items: [at('b', 90), at('c', 80)],
+        LastEvaluatedKey: { user_id: 'owner', id: 'y', created_at: 70 },
+      })
+    const page = await repository.listVideoPage('owner', {
+      limit: 2,
+      filter: 'favorites',
+      order: 'newest',
+      q: ' Lis ',
+    })
+    expect(page.items.map((v) => v.id)).toEqual(['a', 'b'])
+    expect(decodeCursor(page.nextCursor!, 'owner')).toEqual({
+      user_id: 'owner',
+      id: 'b',
+      created_at: 90,
+    })
+    expect(queryInput(dbSend.mock.calls[0])).toMatchObject({
+      Limit: 100,
+      FilterExpression:
+        'favorite = :favorite AND (contains(title_search, :q) OR contains(title, :q_raw))',
+      ExpressionAttributeValues: {
+        ':user_id': 'owner',
+        ':favorite': true,
+        ':q': 'lis',
+        ':q_raw': 'Lis',
+      },
+    })
+
+    dbSend.mockReset()
+    dbSend.mockResolvedValue({
+      Items: [],
+      LastEvaluatedKey: { user_id: 'owner', id: 'z', created_at: 1 },
+    })
+    const sparse = await repository.listVideoPage('owner', {
+      limit: 5,
+      filter: 'ready',
+      order: 'newest',
+    })
+    expect(dbSend).toHaveBeenCalledTimes(5)
+    expect(sparse.items).toEqual([])
+    expect(sparse.nextCursor).not.toBeNull()
+  })
+
+  it('builds filters for every library view', () => {
+    expect(listFilter('all')).toEqual({ values: {} })
+    expect(listFilter('in-progress')).toEqual({
+      expression: '#status IN (:uploading, :processing)',
+      names: { '#status': 'status' },
+      values: { ':uploading': 'uploading', ':processing': 'processing' },
+    })
+    expect(listFilter('ready', '   ')).toEqual({
+      expression: '#status = :ready',
+      names: { '#status': 'status' },
+      values: { ':ready': 'ready' },
+    })
+    const fav = { ...video, favorite: true, title: 'Lisbon Rooftop' }
+    expect(matchesListQuery(fav, 'favorites', 'rooftop')).toBe(true)
+    expect(matchesListQuery(fav, 'favorites', 'beach')).toBe(false)
+    expect(matchesListQuery(video, 'favorites')).toBe(false)
+    expect(matchesListQuery({ ...video, status: 'processing' }, 'in-progress')).toBe(true)
+    expect(matchesListQuery(video, 'in-progress')).toBe(false)
+    expect(matchesListQuery({ ...video, status: 'failed' }, 'ready')).toBe(false)
+    expect(matchesListQuery({ ...video, title: null }, 'all', 'x')).toBe(false)
+  })
+
+  it('rejects malformed cursors and cursors from another user', async () => {
+    const { repository, dbSend } = setup()
+    const query = { limit: 5, filter: 'all', order: 'newest' } as const
+    for (const cursor of ['not-base64!', Buffer.from('{"id":1}').toString('base64url')])
+      await expect(repository.listVideoPage('owner', { ...query, cursor })).rejects.toMatchObject({
+        status: 400,
+        detail: 'Invalid page cursor',
+      })
+    const theirs = encodeCursor({ user_id: 'other', id: 'v', created_at: 1 })
+    await expect(
+      repository.listVideoPage('owner', { ...query, cursor: theirs }),
+    ).rejects.toMatchObject({ status: 400 })
+    expect(dbSend).not.toHaveBeenCalled()
+  })
+
+  it('pages in memory when the index is not deployed yet', async () => {
+    const { repository, dbSend } = setup()
+    const warn = vi.spyOn(console, 'warn').mockImplementation(() => {})
+    const missing = Object.assign(new Error('The table does not have the specified index'), {
+      name: 'ValidationException',
+    })
+    const rows = [
+      at('a', 100, { title: 'Beach day' }),
+      at('c', 90, { title: 'Beach night' }),
+      at('b', 90, { title: 'beach walk' }),
+      at('d', 50, { title: 'Garden' }),
+    ]
+    dbSend.mockRejectedValueOnce(missing).mockResolvedValueOnce({ Items: rows })
+    const first = await repository.listVideoPage('owner', {
+      limit: 2,
+      filter: 'all',
+      order: 'newest',
+      q: 'BEACH',
+    })
+    expect(first.items.map((v) => v.id)).toEqual(['a', 'c'])
+    expect(queryInput(dbSend.mock.calls[1]).IndexName).toBeUndefined()
+    expect(warn).toHaveBeenCalledTimes(1)
+
+    dbSend.mockRejectedValueOnce(missing).mockResolvedValueOnce({ Items: rows })
+    const second = await repository.listVideoPage('owner', {
+      limit: 2,
+      filter: 'all',
+      order: 'newest',
+      q: 'beach',
+      cursor: first.nextCursor!,
+    })
+    expect(second).toEqual({ items: [rows[2]], nextCursor: null })
+
+    dbSend.mockRejectedValueOnce(missing).mockResolvedValueOnce({ Items: rows })
+    const oldest = await repository.listVideoPage('owner', {
+      limit: 3,
+      filter: 'all',
+      order: 'oldest',
+    })
+    expect(oldest.items.map((v) => v.id)).toEqual(['d', 'b', 'c'])
+    warn.mockRestore()
+  })
+
+  it('maps other query failures to a 502', async () => {
+    const { repository, dbSend } = setup()
+    const logging = vi.spyOn(console, 'error').mockImplementation(() => {})
+    dbSend.mockRejectedValueOnce(new Error('throttled'))
+    await expect(
+      repository.listVideoPage('owner', { limit: 5, filter: 'all', order: 'newest' }),
+    ).rejects.toMatchObject({ status: 502, detail: 'Unable to list videos: throttled' })
+    logging.mockRestore()
+  })
+
+  it('summarizes counts and storage across pages using a narrow projection', async () => {
+    const { videos, dbSend } = setup()
+    dbSend
+      .mockResolvedValueOnce({
+        Items: [
+          { status: 'ready', favorite: true, size_bytes: 10 },
+          { status: 'uploading', size_bytes: 5 },
+        ],
+        LastEvaluatedKey: { user_id: 'owner', id: 'x' },
+      })
+      .mockResolvedValueOnce({ Items: [{ status: 'processing', favorite: false }] })
+      .mockResolvedValueOnce({})
+    expect(await videos.getSummary(user)).toEqual({
+      total: 3,
+      favorites: 1,
+      inProgress: 2,
+      storageUsedBytes: 15,
+      storageQuotaBytes: settings.STORAGE_QUOTA_BYTES,
+    })
+    expect(queryInput(dbSend.mock.calls[0])).toMatchObject({
+      ProjectionExpression: '#status, favorite, size_bytes',
+      ExpressionAttributeNames: { '#status': 'status' },
+    })
+    expect(queryInput(dbSend.mock.calls[1]).ExclusiveStartKey).toEqual({
+      user_id: 'owner',
+      id: 'x',
+    })
+    expect(await videos.getSummary(user)).toMatchObject({ total: 0, storageUsedBytes: 0 })
   })
 })

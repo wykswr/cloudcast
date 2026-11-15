@@ -76,6 +76,7 @@ Resources:
           VIDEOS_TABLE: !Ref VideosTable
           USERS_TABLE: !Ref UsersTable
           VIDEO_ID_INDEX: VideoIdIndex
+          USER_CREATED_INDEX: UserCreatedIndex
           COGNITO_USER_POOL_ID: !Ref UserPool
           COGNITO_CLIENT_ID: !Ref UserPoolClient
           CLOUDFRONT_DOMAIN: !GetAtt MediaCloudFrontDistribution.DomainName
@@ -184,6 +185,8 @@ Resources:
           AttributeType: S
         - AttributeName: id
           AttributeType: S
+        - AttributeName: created_at
+          AttributeType: N
       KeySchema:
         - AttributeName: user_id
           KeyType: HASH
@@ -196,6 +199,15 @@ Resources:
           KeySchema:
             - AttributeName: id
               KeyType: HASH
+        # Newest-first library pages without reading the whole partition.
+        - IndexName: UserCreatedIndex
+          Projection:
+            ProjectionType: ALL
+          KeySchema:
+            - AttributeName: user_id
+              KeyType: HASH
+            - AttributeName: created_at
+              KeyType: RANGE
 
   MediaConvertRole:
     Type: AWS::IAM::Role

@@ -5,15 +5,6 @@ export function formatError(error: unknown): string {
   return 'Something went wrong'
 }
 
-export function formatDate(seconds: number): string {
-  return new Intl.DateTimeFormat('en', {
-    month: 'short',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-  }).format(new Date(seconds * 1000))
-}
-
 /** "just now", "3 hours ago", "yesterday", "2 days ago", then an absolute date. */
 export function formatRelative(seconds: number): string {
   const deltaMs = Date.now() - seconds * 1000
@@ -25,7 +16,7 @@ export function formatRelative(seconds: number): string {
   const days = Math.round(hours / 24)
   if (days === 1) return 'yesterday'
   if (days < 7) return `${days} days ago`
-  return formatDate(seconds)
+  return formatLongDate(seconds)
 }
 
 const UNITS = ['B', 'KB', 'MB', 'GB', 'TB']
@@ -50,4 +41,19 @@ export function formatClock(seconds: number): string {
 export function formatDuration(seconds?: number | null): string | null {
   if (!seconds || seconds <= 0) return null
   return formatClock(Math.round(seconds))
+}
+
+/** "Nov 13, 2026" */
+export function formatLongDate(seconds: number): string {
+  return new Intl.DateTimeFormat('en', { month: 'short', day: 'numeric', year: 'numeric' }).format(
+    new Date(seconds * 1000),
+  )
+}
+
+/** "HD" / "4K" from the source height; nothing for smaller videos or unknown sizes. */
+export function qualityBadge(height?: number | null): string | null {
+  if (!height) return null
+  if (height >= 2160) return '4K'
+  if (height >= 720) return 'HD'
+  return null
 }

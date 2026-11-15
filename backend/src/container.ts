@@ -12,7 +12,7 @@ export type AppContainer = {
   uploadService: Pick<UploadService, 'initiateUpload' | 'presignPart' | 'completeUpload'>
   videoService: Pick<
     VideoService,
-    'listUserVideos' | 'loadOwnedVideo' | 'updateVideo' | 'deleteVideo'
+    'listVideoPage' | 'getSummary' | 'loadOwnedVideo' | 'updateVideo' | 'deleteVideo'
   >
   streamSigner: StreamSigner
   tokenVerifier: TokenVerifier

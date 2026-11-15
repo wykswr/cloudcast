@@ -1,5 +1,5 @@
 import { formatClock } from '../../utils/format'
-import { FullscreenIcon, PauseIcon, PlayIcon } from './icons'
+import { FullscreenIcon, PauseIcon, PlayIcon } from '../common/icons'
 import { useTouchControls, type TouchControlsOptions } from './useTouchControls'
 
 /**
@@ -34,6 +34,14 @@ function TouchControls(props: TouchControlsOptions) {
         onContextMenu={(event) => event.preventDefault()}
         aria-hidden
       />
+
+      {!playing && !seekPreview && !flash ? (
+        <div className="pointer-events-none absolute inset-x-0 top-3 z-20 flex justify-center">
+          <span className="rounded-full bg-black/60 px-3 py-1.5 text-xs whitespace-nowrap text-white">
+            Double-tap to play or pause · swipe to skip
+          </span>
+        </div>
+      ) : null}
 
       {seekPreview ? (
         <div className="pointer-events-none absolute inset-0 z-20 grid place-items-center pb-14">
@@ -76,7 +84,7 @@ function TouchControls(props: TouchControlsOptions) {
             seekTo(Number(event.target.value))
             bumpActivity()
           }}
-          className="block h-6 w-full cursor-pointer accent-sakura-pink"
+          className="block h-6 w-full cursor-pointer accent-[#4f6bff]"
           aria-label="Seek"
         />
         <div className="flex items-center gap-3">

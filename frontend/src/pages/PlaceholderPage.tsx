@@ -1,18 +1,24 @@
-import Topbar from '../components/layout/Topbar'
-import Mascot from '../components/common/Mascot'
-import { useShell } from '../components/layout/shell'
+import { SettingsIcon, TrashIcon } from '../components/common/icons'
+import EmptyState from '../components/library/EmptyState'
 
-function PlaceholderPage({ title }: { title: string }) {
-  const { openUpload } = useShell()
+function PlaceholderPage({ title }: { title: 'Trash' | 'Settings' }) {
   return (
-    <>
-      <Topbar title={title} onUpload={openUpload} />
-      <div className="px-7 py-16 text-center text-sakura-ink-soft">
-        <Mascot className="text-7xl" />
-        <h3 className="mb-1.5 mt-2.5 text-xl text-sakura-ink">Coming soon ♡</h3>
-        <p className="text-sm">This corner of CloudCast is still being decorated.</p>
-      </div>
-    </>
+    <div className="flex flex-col gap-6 px-4 pt-3 pb-16 md:px-8 md:pt-5">
+      <h1 className="m-0 font-display text-[26px] font-semibold tracking-[-0.02em] md:text-[28px]">
+        {title}
+      </h1>
+      <EmptyState
+        icon={
+          title === 'Trash' ? (
+            <TrashIcon className="size-10" strokeWidth={1.5} />
+          ) : (
+            <SettingsIcon className="size-10" strokeWidth={1.5} />
+          )
+        }
+        title="Coming soon"
+        message="This part of CloudCast isn’t ready yet."
+      />
+    </div>
   )
 }
 

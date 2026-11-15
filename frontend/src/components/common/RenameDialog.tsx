@@ -1,69 +1,73 @@
 import { useState, type FormEvent } from 'react'
+import { formatError } from '../../utils/format'
 import Modal from './Modal'
+
+const MAX_TITLE = 120
 
 type RenameDialogProps = {
   open: boolean
   currentTitle: string
-  onSave: (title: string) => void | Promise<void>
+  onSave: (title: string) => Promise<void>
   onCancel: () => void
 }
 
 /**
  * The field seeds from `currentTitle` on mount. Callers should pass a `key`
- * that changes when a new clip is targeted so the dialog remounts fresh —
- * avoids resetting state from inside an effect.
+ * that changes when a new video is targeted so the dialog remounts fresh.
  */
 function RenameDialog({ open, currentTitle, onSave, onCancel }: RenameDialogProps) {
   const [value, setValue] = useState(currentTitle)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   const trimmed = value.trim()
   const canSave = trimmed.length > 0 && trimmed !== currentTitle.trim()
 
-  const handleSubmit = async (e: FormEvent<HTMLFormElement>) => {
-    e.preventDefault()
+  const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault()
     if (!canSave) {
       onCancel()
       return
     }
+    setBusy(true)
+    setError(null)
     try {
-      setBusy(true)
       await onSave(trimmed)
+    } catch (err) {
+      setError(formatError(err))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onCancel} widthClass="max-w-sm">
-      <div className="text-center text-5xl">✏️</div>
-      <h2 className="mt-2 text-center text-xl">Rename clip</h2>
-      <p className="mt-1 text-center text-sm text-sakura-ink-soft">
-        Give it a name that sparks joy ♡
-      </p>
-      <form onSubmit={handleSubmit} className="mt-4">
-        <input
-          autoFocus
-          value={value}
-          onChange={(e) => setValue(e.target.value)}
-          placeholder="New title"
-          className="sk-input"
-        />
-        <div className="mt-5 flex gap-2.5">
-          <button
-            type="button"
-            className="sk-btn sk-btn-ghost flex-1 rounded-2xl py-3"
-            onClick={onCancel}
-            disabled={busy}
-          >
+    <Modal open={open} onClose={onCancel} title="Rename video">
+      <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <label className="flex flex-col gap-1.5">
+          <span className="label">Title</span>
+          <input
+            autoFocus
+            onFocus={(event) => event.target.select()}
+            value={value}
+            maxLength={MAX_TITLE}
+            onChange={(event) => setValue(event.target.value)}
+            className="field"
+          />
+          <span className="text-right text-xs text-ink-3">
+            {value.length} / {MAX_TITLE}
+          </span>
+        </label>
+        {error ? (
+          <p role="alert" className="m-0 rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">
+            {error}
+          </p>
+        ) : null}
+        <div className="flex justify-end gap-2">
+          <button type="button" className="btn btn-secondary" onClick={onCancel} disabled={busy}>
             Cancel
           </button>
-          <button
-            type="submit"
-            className="sk-btn sk-btn-primary flex-1 rounded-2xl py-3"
-            disabled={busy || !canSave}
-          >
-            {busy ? 'Saving…' : 'Save ✨'}
+          <button type="submit" className="btn btn-primary" disabled={busy || !canSave}>
+            {busy ? 'Saving…' : 'Save'}
           </button>
         </div>
       </form>

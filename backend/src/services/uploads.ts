@@ -10,6 +10,7 @@ import type { UploadInitRequest, UploadPart } from '@cloudcast/contracts'
 import type { AuthenticatedUser } from '../auth'
 import type { Settings } from '../config'
 import { ApiError, awsOperation } from '../errors'
+import { searchableTitle } from './videos'
 import type { VideoRepository } from './videos'
 
 export function manifestKey(userId: string, videoId: string, rawKey: string): string {
@@ -59,6 +60,7 @@ export class UploadService {
       user_id: user.id,
       id: videoId,
       title,
+      title_search: searchableTitle(title),
       s3_key_raw: rawKey,
       upload_id: response.UploadId,
       status: 'uploading',
