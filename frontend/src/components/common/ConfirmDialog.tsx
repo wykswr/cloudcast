@@ -1,57 +1,71 @@
-import { useState } from 'react'
+import { useState, type ReactNode } from 'react'
+import { formatError } from '../../utils/format'
+import { TrashIcon } from './icons'
 import Modal from './Modal'
 
 type ConfirmDialogProps = {
   open: boolean
-  emoji?: string
-  title: string
-  message: React.ReactNode
+  title: ReactNode
+  message: ReactNode
   confirmLabel?: string
-  cancelLabel?: string
-  onConfirm: () => void | Promise<void>
+  onConfirm: () => Promise<void> | void
   onCancel: () => void
 }
 
+/** "Are you sure?" for destructive actions; shows the error in place if the action fails. */
 function ConfirmDialog({
   open,
-  emoji = '🥺',
   title,
   message,
-  confirmLabel = 'Delete 💔',
-  cancelLabel = 'Keep it',
+  confirmLabel = 'Delete',
   onConfirm,
   onCancel,
 }: ConfirmDialogProps) {
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
-  const handleConfirm = async () => {
+  const cancel = () => {
+    if (busy) return
+    setError(null)
+    onCancel()
+  }
+
+  const confirm = async () => {
+    setBusy(true)
+    setError(null)
     try {
-      setBusy(true)
       await onConfirm()
+    } catch (err) {
+      setError(formatError(err))
     } finally {
       setBusy(false)
     }
   }
 
   return (
-    <Modal open={open} onClose={onCancel} widthClass="max-w-sm">
-      <div className="text-center text-5xl">{emoji}</div>
-      <h2 className="mt-2 text-center text-xl">{title}</h2>
-      <p className="mt-1 text-center text-sm text-sakura-ink-soft">{message}</p>
-      <div className="mt-5 flex gap-2.5">
-        <button
-          className="sk-btn sk-btn-ghost flex-1 rounded-2xl py-3"
-          onClick={onCancel}
-          disabled={busy}
-        >
-          {cancelLabel}
+    <Modal
+      open={open}
+      onClose={cancel}
+      title={title}
+      role="alertdialog"
+      icon={
+        <span className="grid size-11 place-items-center rounded-xl bg-bad-soft text-bad">
+          <TrashIcon className="size-[22px]" />
+        </span>
+      }
+    >
+      <p className="m-0 text-sm leading-relaxed text-ink-2">{message}</p>
+      {error ? (
+        <p role="alert" className="m-0 rounded-lg bg-bad-soft px-3 py-2 text-sm text-bad">
+          {error}
+        </p>
+      ) : null}
+      <div className="flex justify-end gap-2">
+        <button type="button" className="btn btn-secondary" onClick={cancel} disabled={busy}>
+          Cancel
         </button>
-        <button
-          className="sk-btn sk-btn-danger flex-1 rounded-2xl py-3"
-          onClick={handleConfirm}
-          disabled={busy}
-        >
-          {busy ? 'Working…' : confirmLabel}
+        <button type="button" className="btn btn-danger" onClick={confirm} disabled={busy}>
+          {busy ? 'Deleting…' : confirmLabel}
         </button>
       </div>
     </Modal>

@@ -7,6 +7,7 @@ const envSchema = z.object({
   VIDEOS_TABLE: z.string().min(1),
   USERS_TABLE: z.string().min(1),
   VIDEO_ID_INDEX: z.string().default('VideoIdIndex'),
+  USER_CREATED_INDEX: z.string().default('UserCreatedIndex'),
   S3_ENDPOINT_URL: z.string().optional(),
   DYNAMODB_ENDPOINT_URL: z.string().optional(),
   CLOUDFRONT_DOMAIN: z.string().min(1),

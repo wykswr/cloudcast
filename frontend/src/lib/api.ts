@@ -1,6 +1,8 @@
 import { fetchAuthSession } from 'aws-amplify/auth'
 import type {
+  LibrarySummary,
   VideoItem,
+  VideoListQuery,
   VideoListResponse,
   StreamResponse,
   UploadInitRequest,
@@ -62,9 +64,30 @@ async function apiRequest<T>(path: string, options: ApiRequestOptions = {}): Pro
   return data as T
 }
 
-export const fetchVideos = async (): Promise<VideoItem[]> => {
-  const data = await apiRequest<VideoListResponse>('/videos')
-  return data.items
+/** Query string for a library page; empty and default values are left out. */
+export function videoListPath(query: VideoListQuery = {}): string {
+  const params = new URLSearchParams()
+  if (query.limit != null) params.set('limit', String(query.limit))
+  if (query.cursor) params.set('cursor', query.cursor)
+  const q = query.q?.trim()
+  if (q) params.set('q', q)
+  if (query.filter && query.filter !== 'all') params.set('filter', query.filter)
+  if (query.order && query.order !== 'newest') params.set('order', query.order)
+  const search = params.toString()
+  return search ? `/videos?${search}` : '/videos'
+}
+
+export const fetchVideoPage = async (query: VideoListQuery = {}): Promise<VideoListResponse> => {
+  const data = await apiRequest<VideoListResponse>(videoListPath(query))
+  return { items: data.items, nextCursor: data.nextCursor ?? null }
+}
+
+export const fetchVideo = async (videoId: string): Promise<VideoItem> => {
+  return apiRequest<VideoItem>(`/videos/${encodeURIComponent(videoId)}`)
+}
+
+export const fetchSummary = async (): Promise<LibrarySummary> => {
+  return apiRequest<LibrarySummary>('/videos/summary')
 }
 
 export const requestStream = async (videoId: string): Promise<StreamResponse> => {

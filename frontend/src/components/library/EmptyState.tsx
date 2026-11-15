@@ -1,23 +1,19 @@
-import Mascot from '../common/Mascot'
+import type { ReactNode } from 'react'
 
 type EmptyStateProps = {
+  icon: ReactNode
   title: string
   message: string
-  actionLabel?: string
-  onAction?: () => void
+  action?: ReactNode
 }
 
-function EmptyState({ title, message, actionLabel, onAction }: EmptyStateProps) {
+function EmptyState({ icon, title, message, action }: EmptyStateProps) {
   return (
-    <div className="py-16 text-center text-sakura-ink-soft">
-      <Mascot className="text-7xl" />
-      <h3 className="mb-1.5 mt-2.5 text-xl text-sakura-ink">{title}</h3>
-      <p className="text-sm">{message}</p>
-      {actionLabel && onAction && (
-        <button className="sk-btn sk-btn-primary mt-4" onClick={onAction}>
-          ＋ {actionLabel}
-        </button>
-      )}
+    <div className="flex flex-col items-center gap-3 rounded-2xl border border-dashed border-[#d3d3cc] bg-panel px-6 py-16 text-center">
+      <span className="text-ink-3">{icon}</span>
+      <h2 className="m-0 text-base font-semibold">{title}</h2>
+      <p className="m-0 max-w-sm text-sm text-ink-2">{message}</p>
+      {action}
     </div>
   )
 }

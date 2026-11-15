@@ -1,6 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 import { completeUpload, initUpload, signUploadPart } from '../src/lib/api'
-import { getUploadError, multipartUpload, probeVideoMetadata } from '../src/lib/uploads'
+import {
+  UploadSession,
+  getUploadError,
+  isAbortError,
+  isVideoFile,
+  multipartUpload,
+  probeVideoMetadata,
+  titleFromFileName,
+} from '../src/lib/uploads'
 import type { UploadState } from '../src/types'
 
 vi.mock('../src/lib/api', () => ({
@@ -68,13 +76,97 @@ describe('multipartUpload', () => {
     )
   })
 
-  it('fails without completing when a part upload is rejected', async () => {
+  it('retries a part twice, then fails without completing', async () => {
     fetchMock.mockResolvedValue(new Response(null, { status: 403 }))
     const file = new File([new Uint8Array(MB)], 'clip.bin')
-    await expect(multipartUpload({ file, title: 'Clip', onProgress: () => {} })).rejects.toThrow(
-      'Upload failed on part 1',
-    )
+    await expect(
+      multipartUpload({ file, title: 'Clip', onProgress: () => {}, retryDelayScale: 0 }),
+    ).rejects.toThrow('Upload failed on part 1')
+    expect(fetchMock).toHaveBeenCalledTimes(3)
     expect(completeUpload).not.toHaveBeenCalled()
+  })
+
+  it('recovers when a retried part goes through', async () => {
+    fetchMock
+      .mockRejectedValueOnce(new TypeError('network down'))
+      .mockResolvedValueOnce(new Response(null, { headers: { ETag: '"etag-1"' } }))
+    const file = new File([new Uint8Array(MB)], 'clip.bin')
+    await multipartUpload({ file, title: 'Clip', onProgress: () => {}, retryDelayScale: 0 })
+    expect(completeUpload).toHaveBeenCalledWith(
+      expect.objectContaining({ parts: [{ etag: 'etag-1', partNumber: 1 }] }),
+    )
+  })
+
+  it('pauses mid-upload and resumes with only the missing parts', async () => {
+    const controller = new AbortController()
+    const progress: UploadState[] = []
+    fetchMock.mockImplementation(async (url, init) => {
+      const part = String(url).split('-').pop()
+      // Part 1 finishes; pause while the others are still in flight.
+      if (part === '1') {
+        setTimeout(() => controller.abort(), 0)
+        return new Response(null, { headers: { ETag: '"etag-1"' } })
+      }
+      await new Promise((resolve, reject) => {
+        const timer = setTimeout(resolve, 50)
+        init?.signal?.addEventListener('abort', () => {
+          clearTimeout(timer)
+          reject(new DOMException('aborted', 'AbortError'))
+        })
+      })
+      return new Response(null, { headers: { ETag: `"etag-${part}"` } })
+    })
+    const file = new File([new Uint8Array(25 * MB)], 'clip.bin')
+    const session = new UploadSession(file, 'Clip', (state) => progress.push(state))
+
+    const paused = await session.run(controller.signal).catch((error) => error)
+    expect(isAbortError(paused)).toBe(true)
+    expect(session.uploadedBytes).toBe(10 * MB)
+    expect(completeUpload).not.toHaveBeenCalled()
+
+    fetchMock.mockClear()
+    fetchMock.mockImplementation(async (url) => {
+      const part = String(url).split('-').pop()
+      return new Response(null, { headers: { ETag: `"etag-${part}"` } })
+    })
+    await expect(session.run()).resolves.toEqual({ videoId: 'video' })
+    expect(initUpload).toHaveBeenCalledTimes(1)
+    expect(fetchMock.mock.calls.map(([url]) => String(url)).sort()).toEqual([
+      'https://s3.example.com/part-2',
+      'https://s3.example.com/part-3',
+    ])
+    expect(vi.mocked(completeUpload).mock.calls[0][0].parts.map((p) => p.partNumber)).toEqual([
+      1, 2, 3,
+    ])
+    expect(progress.at(-1)).toMatchObject({ stage: 'success', sentBytes: 25 * MB })
+  })
+
+  it('stops before starting, and during a retry wait, when paused', async () => {
+    const file = new File([new Uint8Array(MB)], 'clip.bin')
+    const aborted = new AbortController()
+    aborted.abort()
+    const early = await multipartUpload({
+      file,
+      title: 'Clip',
+      onProgress: () => {},
+      signal: aborted.signal,
+    }).catch((error) => error)
+    expect(isAbortError(early)).toBe(true)
+    expect(initUpload).not.toHaveBeenCalled()
+
+    const controller = new AbortController()
+    fetchMock.mockImplementation(async () => {
+      setTimeout(() => controller.abort(), 0)
+      throw new TypeError('network down')
+    })
+    const waiting = await multipartUpload({
+      file,
+      title: 'Clip',
+      onProgress: () => {},
+      signal: controller.signal,
+    }).catch((error) => error)
+    expect(isAbortError(waiting)).toBe(true)
+    expect(isAbortError(new Error('x'))).toBe(false)
   })
 })
 
@@ -117,6 +209,15 @@ describe('upload helpers', () => {
     expect(await failed).toEqual({})
     expect(URL.revokeObjectURL).toHaveBeenCalledTimes(3)
     vi.unstubAllGlobals()
+  })
+
+  it('recognises video files and suggests titles', () => {
+    expect(isVideoFile({ name: 'clip.bin', type: 'video/mp4' })).toBe(true)
+    expect(isVideoFile({ name: 'IMG_4410.MOV', type: '' })).toBe(true)
+    expect(isVideoFile({ name: 'IMG_4412.HEIC', type: 'image/heic' })).toBe(false)
+    expect(titleFromFileName('Drone_Squamish_4K.mov')).toBe('Drone Squamish 4K')
+    expect(titleFromFileName('team-offsite recap.final.mp4')).toBe('team-offsite recap.final')
+    expect(titleFromFileName('.mp4')).toBe('.mp4')
   })
 
   it('turns errors into an error upload state', () => {

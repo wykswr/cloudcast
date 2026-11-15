@@ -1,97 +1,103 @@
-import { useNavigate } from 'react-router-dom'
-import StatusBadge from '../common/StatusBadge'
-import { useVideos } from '../../context/videos-context'
-import { videoArt } from '../../utils/art'
-import { formatBytes, formatDuration, formatRelative } from '../../utils/format'
+import { Link } from 'react-router-dom'
+import { useUploads } from '../../context/uploads-context'
+import type { VideoActions } from '../../hooks/useVideoActions'
+import { formatDuration } from '../../utils/format'
+import { displayTitle, isInFlight } from '../../utils/status'
 import type { VideoItem } from '../../types'
+import Thumbnail from '../common/Thumbnail'
+import { AlertIcon, PlayIcon } from '../common/icons'
+import FavoriteButton from './FavoriteButton'
+import VideoMenu from './VideoMenu'
+import { videoMeta } from './videoMeta'
 
-type VideoCardProps = {
-  video: VideoItem
-  onRename: (video: VideoItem) => void
-  onDelete: (video: VideoItem) => void
-}
-
-function VideoCard({ video, onRename, onDelete }: VideoCardProps) {
-  const navigate = useNavigate()
-  const { toggleFavorite } = useVideos()
-  const { gradient, emoji } = videoArt(video.id)
+function VideoCard({ video, actions }: { video: VideoItem; actions: VideoActions }) {
+  const { progressFor } = useUploads()
   const ready = video.status === 'ready'
+  const title = displayTitle(video)
   const duration = formatDuration(video.durationSeconds)
-
-  const meta =
-    video.status === 'processing'
-      ? 'cooking your video…'
-      : video.status === 'uploading'
-        ? 'uploading…'
-        : video.status === 'failed'
-          ? 'tap to retry'
-          : [formatRelative(video.createdAt), formatBytes(video.sizeBytes)]
-              .filter((p) => p && p !== '—')
-              .join(' · ')
-
-  const openWatch = () => {
-    if (ready) navigate(`/watch/${video.id}`)
-  }
+  const percent = video.status === 'uploading' ? progressFor(video.id) : undefined
 
   return (
-    <div className="group relative overflow-hidden rounded-[20px] bg-white shadow-[0_14px_30px_-18px_rgba(167,139,250,0.5)] transition hover:-translate-y-1.5 hover:shadow-[0_24px_44px_-18px_rgba(255,93,143,0.5)]">
-      <div
-        onClick={openWatch}
-        className={`relative grid aspect-video place-items-center text-4xl ${ready ? 'cursor-pointer' : ''}`}
-        style={{ background: gradient }}
-      >
-        <span aria-hidden>{emoji}</span>
+    <article className="group relative flex min-w-0 flex-col gap-3">
+      <Thumbnail videoId={video.id} className="rounded-xl" zoomOnHover={ready}>
+        {ready ? (
+          <>
+            <Link
+              to={`/watch/${video.id}`}
+              aria-label={`Play ${title}`}
+              className="absolute inset-0 grid place-items-center"
+            >
+              <span className="grid size-[52px] place-items-center rounded-full bg-white/95 text-ink opacity-0 shadow-[0_8px_24px_rgba(0,0,0,0.25)] transition-opacity group-hover:opacity-100 group-focus-within:opacity-100">
+                <PlayIcon className="size-[22px]" />
+              </span>
+            </Link>
+            {duration ? (
+              <span className="font-tabular pointer-events-none absolute right-2 bottom-2 rounded-md bg-[rgba(14,16,20,0.78)] px-1.5 py-0.5 text-xs font-semibold text-white">
+                {duration}
+              </span>
+            ) : null}
+          </>
+        ) : null}
 
-        <div className="absolute left-2.5 top-2.5">
-          <StatusBadge status={video.status} />
-        </div>
-
-        <button
-          onClick={(e) => {
-            e.stopPropagation()
-            void toggleFavorite(video)
-          }}
-          className="absolute right-2 top-2 grid size-8 place-items-center rounded-full bg-white text-[15px] shadow-[0_4px_10px_rgba(0,0,0,0.1)]"
-          title={video.favorite ? 'Unfavorite' : 'Favorite'}
-        >
-          {video.favorite ? '♥' : '♡'}
-        </button>
-
-        {duration && (
-          <span className="absolute bottom-2.5 right-2.5 rounded-lg bg-[rgba(40,20,50,0.6)] px-1.5 py-0.5 text-[10px] font-bold text-white">
-            {duration}
-          </span>
-        )}
-
-        {ready && (
-          <div className="pointer-events-none absolute inset-0 grid place-items-center opacity-0 transition group-hover:opacity-100">
-            <span className="grid size-12 place-items-center rounded-full bg-white/90 text-xl text-sakura-pink-deep">
-              ▶
-            </span>
+        {isInFlight(video) ? (
+          <div className="absolute inset-0 flex flex-col justify-end gap-2 bg-[rgba(14,16,20,0.55)] p-3 text-white">
+            <div className="flex justify-between text-xs font-semibold">
+              <span>{video.status === 'uploading' ? 'Uploading' : 'Getting it ready'}</span>
+              {percent !== undefined ? <span className="font-tabular">{percent}%</span> : null}
+            </div>
+            <div className="h-1 overflow-hidden rounded-full bg-white/25">
+              <div
+                className={`cc-busy h-full rounded-full ${video.status === 'uploading' ? 'bg-[#7d93ff]' : 'bg-[#f0a250]'}`}
+                style={{ width: percent !== undefined ? `${percent}%` : '100%' }}
+              />
+            </div>
           </div>
-        )}
-      </div>
+        ) : null}
 
-      <div className="flex items-start gap-2 p-3.5">
-        <div className="min-w-0 flex-1">
-          <h4 className="truncate text-sm">{video.title || 'Untitled clip'}</h4>
-          <p className="mt-0.5 text-[11px] text-sakura-ink-soft">{meta}</p>
+        {video.status === 'failed' ? (
+          <div className="absolute inset-0 flex flex-col items-center justify-center gap-2.5 bg-bad-soft text-bad">
+            <AlertIcon className="size-[26px]" />
+            <span className="text-[13px] font-semibold">Something went wrong</span>
+            <button
+              type="button"
+              onClick={() => actions.askDelete(video)}
+              className="h-[34px] rounded-lg border border-[#e8bfb6] bg-white px-3.5 text-[13px] font-semibold text-bad"
+            >
+              Delete
+            </button>
+          </div>
+        ) : null}
+
+        <FavoriteButton video={video} onToggle={() => actions.toggleFavorite(video)} />
+      </Thumbnail>
+
+      <div className="flex items-start gap-2">
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <h3 className="m-0 truncate text-[15px] font-semibold">
+            {ready ? (
+              <Link to={`/watch/${video.id}`} className="text-ink no-underline hover:underline">
+                {title}
+              </Link>
+            ) : (
+              title
+            )}
+          </h3>
+          <span className={`text-[13px] ${video.status === 'failed' ? 'text-bad' : 'text-ink-3'}`}>
+            {videoMeta(video)}
+          </span>
         </div>
-        <button
-          onClick={() => onRename(video)}
-          className="rounded-lg px-1 py-0.5 text-base text-sakura-ink-soft hover:bg-[#fff3f8]"
-          title="Rename"
-        >
-          ✏️
-        </button>
-        <button
-          onClick={() => onDelete(video)}
-          className="rounded-lg px-1 py-0.5 text-base text-sakura-ink-soft hover:bg-[#fff3f8]"
-          title="Delete"
-        >
-          🗑️
-        </button>
+        <VideoMenu video={video} actions={actions} />
       </div>
+    </article>
+  )
+}
+
+export function VideoCardSkeleton() {
+  return (
+    <div aria-hidden className="flex flex-col gap-2.5">
+      <div className="cc-skeleton aspect-video rounded-xl" />
+      <div className="cc-skeleton h-3.5 w-3/4 rounded-md" />
+      <div className="cc-skeleton h-3 w-[45%] rounded-md" />
     </div>
   )
 }

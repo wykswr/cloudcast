@@ -4,6 +4,7 @@ import {
   CompleteUploadResponseSchema,
   DeleteVideoResponseSchema,
   ErrorResponseSchema,
+  LibrarySummarySchema,
   SignPartRequestSchema,
   SignPartResponseSchema,
   StreamResponseSchema,
@@ -11,6 +12,7 @@ import {
   UploadInitRequestSchema,
   UploadInitResponseSchema,
   VideoItemSchema,
+  VideoListQuerySchema,
   VideoListResponseSchema,
 } from '@cloudcast/contracts'
 import type { AppContainer, AppEnv } from '../container'
@@ -28,7 +30,7 @@ const body = <T extends z.ZodType>(schema: T) => ({
   content: { 'application/json': { schema } },
 })
 const errors = {
-  400: json(ErrorResponseSchema, 'Invalid upload session or empty parts'),
+  400: json(ErrorResponseSchema, 'Invalid upload session, empty parts, or invalid page cursor'),
   401: json(ErrorResponseSchema, 'Authentication required'),
   403: json(ErrorResponseSchema, 'Admin privileges required'),
   404: json(ErrorResponseSchema, 'Video not found'),
@@ -47,7 +49,21 @@ const listVideosRoute = createRoute({
   ...common,
   method: 'get',
   path: '/',
+  request: { query: VideoListQuerySchema },
   responses: { 200: json(VideoListResponseSchema), ...errors },
+})
+const summaryRoute = createRoute({
+  ...common,
+  method: 'get',
+  path: '/summary',
+  responses: { 200: json(LibrarySummarySchema), ...errors },
+})
+const getVideoRoute = createRoute({
+  ...common,
+  method: 'get',
+  path: '/{videoId}',
+  request: { params },
+  responses: { 200: json(VideoItemSchema), ...errors },
 })
 const initUploadRoute = createRoute({
   ...common,
@@ -112,8 +128,18 @@ export function videoRoutes({
   app.use('*', requireUser(tokenVerifier))
 
   app.openapi(listVideosRoute, async (c) => {
-    const videos = await videoService.listUserVideos(c.get('user'))
-    return c.json({ items: videos.map(toVideoItem) }, 200)
+    const page = await videoService.listVideoPage(c.get('user'), c.req.valid('query'))
+    return c.json({ items: page.items.map(toVideoItem), nextCursor: page.nextCursor }, 200)
+  })
+
+  // Registered before `/{videoId}` so "summary" is not read as a video id.
+  app.openapi(summaryRoute, async (c) => {
+    return c.json(await videoService.getSummary(c.get('user')), 200)
+  })
+
+  app.openapi(getVideoRoute, async (c) => {
+    const video = await videoService.loadOwnedVideo(c.get('user'), c.req.valid('param').videoId)
+    return c.json(toVideoItem(video), 200)
   })
 
   app.openapi(initUploadRoute, async (c) => {

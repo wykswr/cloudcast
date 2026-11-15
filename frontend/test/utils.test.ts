@@ -10,10 +10,20 @@ import {
   formatClock,
   formatDuration,
   formatError,
+  formatLongDate,
   formatRelative,
+  qualityBadge,
 } from '../src/utils/format'
 import { videoArt } from '../src/utils/art'
-import { isInFlight } from '../src/utils/status'
+import { STATUS_LABELS, displayTitle, isInFlight } from '../src/utils/status'
+import { initials } from '../src/utils/user'
+import {
+  STRENGTH_LABELS,
+  isValidEmail,
+  passwordRules,
+  passwordScore,
+  sanitizeCode,
+} from '../src/utils/validation'
 
 afterEach(() => vi.useRealTimers())
 
@@ -51,6 +61,14 @@ describe('format utils', () => {
     expect(formatRelative(ago(30 * 86400))).toMatch(/Dec/)
   })
 
+  it('formats long dates and quality badges', () => {
+    expect(formatLongDate(Date.UTC(2026, 10, 13, 12) / 1000)).toBe('Nov 13, 2026')
+    expect(qualityBadge(null)).toBeNull()
+    expect(qualityBadge(480)).toBeNull()
+    expect(qualityBadge(1080)).toBe('HD')
+    expect(qualityBadge(2160)).toBe('4K')
+  })
+
   it('formats unknown errors generically', () => {
     expect(formatError(new Error('Nope'))).toBe('Nope')
     expect(formatError('string')).toBe('Something went wrong')
@@ -63,6 +81,44 @@ describe('isInFlight', () => {
     expect(isInFlight({ status: 'processing' })).toBe(true)
     expect(isInFlight({ status: 'ready' })).toBe(false)
     expect(isInFlight({ status: 'failed' })).toBe(false)
+  })
+})
+
+describe('status labels', () => {
+  it('uses plain words and a fallback title', () => {
+    expect(STATUS_LABELS.processing).toBe('Getting ready')
+    expect(displayTitle({ title: '  Beach day ' })).toBe('Beach day')
+    expect(displayTitle({ title: null })).toBe('Untitled video')
+    expect(displayTitle({ title: '   ' })).toBe('Untitled video')
+  })
+})
+
+describe('initials', () => {
+  it('uses the first letters of the email name', () => {
+    expect(initials('alex.kim@example.com')).toBe('AK')
+    expect(initials('sam@example.com')).toBe('SA')
+    expect(initials(null)).toBe('ME')
+  })
+})
+
+describe('validation', () => {
+  it('checks emails', () => {
+    expect(isValidEmail(' you@example.com ')).toBe(true)
+    expect(isValidEmail('you@example')).toBe(false)
+    expect(isValidEmail('')).toBe(false)
+  })
+
+  it('scores passwords against the account policy', () => {
+    expect(passwordScore('')).toBe(0)
+    expect(STRENGTH_LABELS[passwordScore('')]).toBe('Too weak')
+    expect(passwordRules('abc12345').map((rule) => rule.ok)).toEqual([true, true, false, false])
+    expect(passwordScore('Abc12345!')).toBe(4)
+    expect(STRENGTH_LABELS[passwordScore('Abc12345!')]).toBe('Strong')
+  })
+
+  it('keeps only the digits of a one-time code', () => {
+    expect(sanitizeCode('12 34-56 78')).toBe('123456')
+    expect(sanitizeCode('ab1', 4)).toBe('1')
   })
 })
 
@@ -89,8 +145,15 @@ describe('touch gestures', () => {
 describe('videoArt', () => {
   it('derives stable placeholder art from the video id', () => {
     expect(videoArt('abc')).toEqual(videoArt('abc'))
-    expect(videoArt('abc').gradient).toMatch(/^linear-gradient/)
+    expect(videoArt('abc').sky).toMatch(/^#[0-9a-f]{6}$/)
     const ids = Array.from({ length: 20 }, (_, i) => `video-${i}`)
-    expect(new Set(ids.map((id) => videoArt(id).emoji)).size).toBeGreaterThan(1)
+    expect(new Set(ids.map((id) => videoArt(id).sky)).size).toBeGreaterThan(1)
+    for (const id of ids) {
+      const { sunLeft, sunTop } = videoArt(id)
+      expect(sunLeft).toBeGreaterThanOrEqual(14)
+      expect(sunLeft).toBeLessThan(74)
+      expect(sunTop).toBeGreaterThanOrEqual(16)
+      expect(sunTop).toBeLessThan(38)
+    }
   })
 })

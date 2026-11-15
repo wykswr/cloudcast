@@ -38,7 +38,29 @@ export const VideoItemSchema = z.object({
   sourceHeight: z.number().int().nullable().default(null),
   favorite: z.boolean().default(false),
 })
-export const VideoListResponseSchema = z.object({ items: z.array(VideoItemSchema) })
+/** Library views the list endpoint can filter to. */
+export const VideoListFilterSchema = z.enum(['all', 'favorites', 'in-progress', 'ready'])
+export const VideoListOrderSchema = z.enum(['newest', 'oldest'])
+/** Query string for `GET /videos`. Pages are cursor-based; pass back `nextCursor` for the next one. */
+export const VideoListQuerySchema = z.object({
+  limit: z.coerce.number().int().min(1).max(100).default(24),
+  cursor: z.string().min(1).max(2048).optional(),
+  q: z.string().trim().max(200).optional(),
+  filter: VideoListFilterSchema.default('all'),
+  order: VideoListOrderSchema.default('newest'),
+})
+export const VideoListResponseSchema = z.object({
+  items: z.array(VideoItemSchema),
+  nextCursor: z.string().nullable().default(null),
+})
+/** Counts and storage for the library sidebar, without listing every video. */
+export const LibrarySummarySchema = z.object({
+  total: z.number().int(),
+  favorites: z.number().int(),
+  inProgress: z.number().int(),
+  storageUsedBytes: z.number().int(),
+  storageQuotaBytes: z.number().int(),
+})
 export const UpdateVideoRequestSchema = z.object({
   title: z.string().nullish(),
   favorite: z.boolean().nullish(),
@@ -57,7 +79,11 @@ export type UploadPart = z.infer<typeof UploadPartSchema>
 export type CompleteUploadRequest = z.infer<typeof CompleteUploadRequestSchema>
 export type CompleteUploadResponse = z.infer<typeof CompleteUploadResponseSchema>
 export type VideoItem = z.infer<typeof VideoItemSchema>
+export type VideoListFilter = z.infer<typeof VideoListFilterSchema>
+export type VideoListOrder = z.infer<typeof VideoListOrderSchema>
+export type VideoListQuery = z.input<typeof VideoListQuerySchema>
 export type VideoListResponse = z.infer<typeof VideoListResponseSchema>
+export type LibrarySummary = z.infer<typeof LibrarySummarySchema>
 export type UpdateVideoRequest = z.infer<typeof UpdateVideoRequestSchema>
 export type StreamResponse = z.infer<typeof StreamResponseSchema>
 export type DeleteVideoResponse = z.infer<typeof DeleteVideoResponseSchema>

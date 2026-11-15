@@ -27,6 +27,7 @@ describe('Hono API', () => {
         '/videos/upload/init',
         '/videos/upload/sign-part',
         '/videos/upload/complete',
+        '/videos/summary',
         '/videos/{videoId}',
         '/videos/{videoId}/stream',
       ]),
@@ -59,7 +60,46 @@ describe('Hono API', () => {
           favorite: false,
         },
       ],
+      nextCursor: null,
     })
+  })
+  it('passes list paging, filters and search through with defaults', async () => {
+    const { request, container } = setup()
+    await request('/videos')
+    expect(container.videoService.listVideoPage).toHaveBeenLastCalledWith(user, {
+      limit: 24,
+      filter: 'all',
+      order: 'newest',
+    })
+    vi.mocked(container.videoService.listVideoPage).mockResolvedValueOnce({
+      items: [],
+      nextCursor: 'next',
+    })
+    const response = await request(
+      '/videos?limit=5&cursor=abc&q=%20Lisbon%20&filter=favorites&order=oldest',
+    )
+    expect(await response.json()).toEqual({ items: [], nextCursor: 'next' })
+    expect(container.videoService.listVideoPage).toHaveBeenLastCalledWith(user, {
+      limit: 5,
+      cursor: 'abc',
+      q: 'Lisbon',
+      filter: 'favorites',
+      order: 'oldest',
+    })
+    for (const query of ['limit=0', 'limit=101', 'filter=trash', 'order=size'])
+      expect((await request(`/videos?${query}`)).status).toBe(422)
+  })
+  it('serves the library summary and single videos to their owner', async () => {
+    const { request, container } = setup()
+    vi.mocked(container.tokenVerifier.verify).mockResolvedValue({ ...user, groups: [] })
+    expect(await (await request('/videos/summary')).json()).toMatchObject({ total: 1 })
+    expect(container.videoService.loadOwnedVideo).not.toHaveBeenCalled()
+    const response = await request('/videos/video')
+    expect(await response.json()).toMatchObject({ id: 'video', status: 'ready' })
+    expect(container.videoService.loadOwnedVideo).toHaveBeenCalledWith(
+      expect.objectContaining({ id: 'owner' }),
+      'video',
+    )
   })
   it('requires authentication and propagates verifier failures', async () => {
     const { app, request, container } = setup()
@@ -162,7 +202,7 @@ describe('Hono API', () => {
   })
   it('hides unexpected errors behind a logged 500', async () => {
     const { request, container } = setup()
-    vi.mocked(container.videoService.listUserVideos).mockRejectedValue(new Error('boom'))
+    vi.mocked(container.videoService.listVideoPage).mockRejectedValue(new Error('boom'))
     const logging = vi.spyOn(console, 'error').mockImplementation(() => {})
     const response = await request('/videos')
     expect(response.status).toBe(500)
