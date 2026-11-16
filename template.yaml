@@ -20,9 +20,9 @@ Parameters:
     Default: /cloudcast/dev/cloudfront-private-key
   TranscoderVcpu:
     Type: String
-    Default: '16'
+    Default: '8'
     AllowedValues: ['4', '8', '16']
-    Description: vCPUs per Fargate transcode task. Lower it if the account's Fargate vCPU quota is below 16.
+    Description: vCPUs per Fargate transcode task. Use 16 for faster encodes, or 4 if the account's Fargate vCPU quota is below 8.
 
 Mappings:
   # Fargate task sizes at 2 GB of memory per vCPU.

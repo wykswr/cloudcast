@@ -134,7 +134,7 @@ pnpm deploy:transcoder
 
 Uploads fail processing until this has run once. Run it again after changing anything in `transcoder/`; the next transcode picks up the new image.
 
-Each transcode task uses 16 vCPUs by default. New AWS accounts often have a lower Fargate vCPU quota, in which case tasks fail to start; either request an increase for the "Fargate On-Demand" and "Fargate Spot" vCPU quotas or deploy with `--parameter-overrides TranscoderVcpu=4` (or `8`).
+Each transcode task uses 8 vCPUs by default. New AWS accounts can have a lower Fargate vCPU quota, in which case tasks fail to start; either request an increase for the "Fargate On-Demand" and "Fargate Spot" vCPU quotas or deploy with `--parameter-overrides TranscoderVcpu=4`. Use `TranscoderVcpu=16` for faster encodes at about the same cost per video.
 
 ### 4. Deploy the frontend
 
