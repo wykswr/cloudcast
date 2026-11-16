@@ -1,6 +1,6 @@
 # AGENTS.md
 
-This file provides repository-specific guidance for OpenAI Codex and other coding agents working in this repository.
+This file provides repository-specific guidance for coding agents (Codex, Claude Code, and others) working in this repository.
 
 ## Project overview
 
@@ -51,7 +51,7 @@ Always pass `--profile personal` to `sam` and `aws` commands. This stack lives i
 
 See `README.md` for the one-time CloudFront signing-key setup in SSM. Those `aws ssm put-parameter` commands also need `--profile personal`. Deploys fail without that signing key.
 
-## Working conventions for Codex
+## Working conventions
 
 - Prefer small, focused diffs. Do not rewrite unrelated code.
 - Code is formatted with Prettier (`pnpm format`); do not hand-format against it.
@@ -89,7 +89,7 @@ Auth has two tiers:
 - User middleware requires a valid Cognito token.
 - Admin middleware additionally requires the `admin` group claim.
 
-All write, upload, and stream endpoints are admin-only. Only `GET /videos` is plain-user.
+All write, upload, and stream endpoints are admin-only. The read endpoints `GET /videos`, `GET /videos/summary`, and `GET /videos/{videoId}` need only a valid user token.
 
 Token verification in `backend/src/auth.ts` fetches Cognito JWKS, caches it, checks the RS256 signature and issuer, and manually matches `aud` / `client_id` using `jose`.
 
@@ -147,7 +147,7 @@ Processing is event-driven and is not called by the backend.
 
 Failures are handled through the workflow `Catch` path, which writes `status=failed`.
 
-The backend does not poll processing state. The frontend polls `GET /videos` for status updates.
+The backend does not poll processing state. The frontend polls `GET /videos/{videoId}` for each video that is still uploading or processing, until its status changes.
 
 ### Signed playback
 
