@@ -168,7 +168,7 @@ flowchart TD
 
 - **Input:** Original video from raw bucket
 - **Output:** HLS playlist (`.m3u8`) + segments (`.ts`) to processed bucket
-- **Ladder:** fixed rungs at 360p, 480p, 720p, 1080p, 1440p, and 2160p (bitrate caps 0.8, 1.4, 2.8, 5, 9, and 16 Mb/s). The task probes the source with ffprobe and encodes every rung up to the first one the source fits inside; that top rung keeps the source's own resolution, so nothing is upscaled and a 1920x800 film tops out at 1920x800.
+- **Ladder:** fixed rungs at 720p, 1080p, 1440p, and 2160p (bitrate caps 2.8, 5, 9, and 16 Mb/s). The task probes the source with ffprobe and encodes every rung up to the first one the source fits inside; that top rung keeps the source's own resolution, so nothing is upscaled and a 1920x800 film tops out at 1920x800.
 - **Settings:** H.264 (libx264, `medium` preset, CRF 21 with a per-rung bitrate cap), 4-second segments with keyframes aligned across renditions, first audio track as AAC stereo at 128 kb/s in a shared audio group. All renditions are encoded in one ffmpeg run.
 - **Capacity:** 16 vCPU / 32 GB Fargate task with 100 GB of ephemeral storage (`TranscoderVcpu` parameter). The first attempt runs on Fargate Spot; if it is interrupted or Spot capacity is unavailable, the workflow retries once on on-demand Fargate. A task is stopped after 12 hours.
 - **Not handled:** HDR sources are converted to 8-bit without tone mapping, and only the first audio track is kept; subtitles are dropped.

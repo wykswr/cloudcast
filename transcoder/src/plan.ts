@@ -2,8 +2,6 @@ export type Rung = { name: string; width: number; height: number; maxrateKbps: n
 
 /** Smallest first. Each rung is a 16:9 box the picture is scaled to fit inside. */
 export const LADDER: Rung[] = [
-  { name: '360p', width: 640, height: 360, maxrateKbps: 800 },
-  { name: '480p', width: 854, height: 480, maxrateKbps: 1400 },
   { name: '720p', width: 1280, height: 720, maxrateKbps: 2800 },
   { name: '1080p', width: 1920, height: 1080, maxrateKbps: 5000 },
   { name: '1440p', width: 2560, height: 1440, maxrateKbps: 9000 },
