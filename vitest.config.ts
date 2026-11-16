@@ -2,7 +2,7 @@ import { defineConfig } from 'vitest/config'
 
 export default defineConfig({
   test: {
-    include: ['{backend,frontend,scripts}/test/**/*.test.ts'],
+    include: ['{backend,frontend,scripts,transcoder}/test/**/*.test.ts'],
     coverage: {
       provider: 'v8',
       include: [
@@ -10,6 +10,7 @@ export default defineConfig({
         'frontend/src/{lib,utils}/**',
         'frontend/src/components/watch/gestures.ts',
         'scripts/lib/**',
+        'transcoder/src/**',
       ],
       reporter: ['text', 'html'],
       // Per-area floors: CI fails if coverage drops below what the suite reaches today.
@@ -18,6 +19,7 @@ export default defineConfig({
         'backend/src/*.ts': { lines: 75 },
         'frontend/src/{lib,utils}/**': { lines: 90 },
         'scripts/lib/**': { lines: 95 },
+        'transcoder/src/{plan,job}.ts': { lines: 95 },
       },
     },
   },

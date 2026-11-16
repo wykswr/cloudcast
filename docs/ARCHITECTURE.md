@@ -20,7 +20,7 @@
 CloudCast is a serverless-style video hosting platform that enables:
 
 - **Authenticated multipart uploads** for large video files (up to 20GB)
-- **Automated video transcoding** to HLS format via AWS MediaConvert
+- **Automated video transcoding** to HLS format with ffmpeg on AWS Fargate Spot
 - **Secure playback** using CloudFront signed URLs
 
 ### Tech Stack
@@ -33,7 +33,7 @@ CloudCast is a serverless-style video hosting platform that enables:
 | Storage        | Amazon S3 (raw + processed buckets)             |
 | Database       | Amazon DynamoDB                                 |
 | CDN            | Amazon CloudFront (with signed URLs)            |
-| Transcoding    | AWS Elemental MediaConvert                      |
+| Transcoding    | ffmpeg (libx264) on ECS Fargate Spot            |
 | Orchestration  | AWS Step Functions                              |
 | IaC            | AWS SAM (Serverless Application Model)          |
 
@@ -57,7 +57,7 @@ flowchart TD
 
     subgraph PIPE["Processing Pipeline (AWS Step Functions)"]
         direction TB
-        Extract["ExtractContext<br/>Parse S3 event"] --> MC["CreateMediaConvertJob<br/>Transcode to HLS"]
+        Extract["ExtractContext<br/>Parse S3 event"] --> MC["RunTranscode<br/>ffmpeg on Fargate"]
         MC -->|success| Ready["MarkReady<br/>Update DynamoDB"]
         MC -->|error| Failed["MarkFailed<br/>Update DynamoDB"]
     end
@@ -86,7 +86,11 @@ flowchart TD
 | `ProcessedVideosBucket`   | S3 Bucket                      | Stores transcoded HLS video segments         |
 | `UsersTable`              | DynamoDB Table                 | User metadata storage                        |
 | `VideosTable`             | DynamoDB Table                 | Video metadata and processing status         |
-| `MediaConvertRole`        | IAM Role                       | Permissions for MediaConvert jobs            |
+| `TranscoderRepository`    | ECR Repository                 | Holds the ffmpeg transcoder image            |
+| `TranscoderCluster`       | ECS Cluster                    | Fargate and Fargate Spot capacity            |
+| `TranscoderTaskDefinition`| ECS Task Definition            | Transcode task size, image, and roles        |
+| `TranscoderTaskRole`      | IAM Role                       | Read raw bucket, write processed bucket      |
+| `TranscoderVpc`           | VPC (two public subnets)       | Outbound-only network for transcode tasks    |
 | `ProcessingStateMachine`  | Step Functions State Machine   | Orchestrates video processing workflow       |
 | `CloudFrontOAC`           | CloudFront Origin Access Control| Secures S3 access to CloudFront only        |
 | `CloudFrontDistribution`  | CloudFront Distribution        | CDN for secure video delivery                |
@@ -104,8 +108,10 @@ cloudcast-processed-{env}/
 └── {user_id}/
     └── {video_id}/
         └── hls/
-            ├── playlist.m3u8
-            └── playlist_720p_*.ts
+            ├── {stem}.m3u8          # master playlist
+            ├── 1080p/index.m3u8     # one directory per rendition
+            ├── 1080p/segment_*.ts
+            └── audio/index.m3u8     # shared AAC track
 ```
 
 ---
@@ -151,16 +157,21 @@ flowchart TD
     S3["S3 Raw Bucket"] -->|Object Created event| EB["EventBridge"]
     EB -->|Trigger state machine| SF["Step Functions"]
     SF --> Extract["ExtractContext<br/>Parse S3 key"]
-    Extract --> MC["CreateMediaConvertJob (aws-sdk:mediaconvert)<br/>Input: S3 raw key<br/>Output: HLS to processed bucket<br/>UserMetadata: video_id"]
+    Extract --> MC["RunTranscode (ecs:runTask.sync)<br/>Input: S3 raw key<br/>Output: HLS to processed bucket<br/>Capacity: Fargate Spot"]
     MC -->|Success| Ready["MarkReady (DynamoDB)<br/>status=ready"]
-    MC -->|Error| Failed["MarkFailed (DynamoDB)<br/>status=failed"]
+    MC -->|Error| Retry{"SelectRetry<br/>Spot attempt lost?"}
+    Retry -->|Yes: switch to on-demand| MC
+    Retry -->|No| Failed["MarkFailed (DynamoDB)<br/>status=failed"]
 ```
 
-**MediaConvert Configuration:**
+**Transcoder Configuration (`transcoder/`):**
 
 - **Input:** Original video from raw bucket
 - **Output:** HLS playlist (`.m3u8`) + segments (`.ts`) to processed bucket
-- **Settings:** H.264 Automated ABR capped at 4K (`3840x2160`), up to 6 renditions, 600 kb/s-20 Mb/s average ABR range, QVBR + multi-pass HQ, AAC stereo audio at 128 kb/s. The frontend records source dimensions at upload time; Step Functions uses them to keep sub-1080p sources source-native, require a 1080p top rendition for 1080p-or-higher sources, force a 1440p rendition for 2K-or-higher sources, and force a 2160p rendition for 4K sources.
+- **Ladder:** fixed rungs at 360p, 480p, 720p, 1080p, 1440p, and 2160p (bitrate caps 0.8, 1.4, 2.8, 5, 9, and 16 Mb/s). The task probes the source with ffprobe and encodes every rung up to the first one the source fits inside; that top rung keeps the source's own resolution, so nothing is upscaled and a 1920x800 film tops out at 1920x800.
+- **Settings:** H.264 (libx264, `medium` preset, CRF 21 with a per-rung bitrate cap), 4-second segments with keyframes aligned across renditions, first audio track as AAC stereo at 128 kb/s in a shared audio group. All renditions are encoded in one ffmpeg run.
+- **Capacity:** 16 vCPU / 32 GB Fargate task with 100 GB of ephemeral storage (`TranscoderVcpu` parameter). The first attempt runs on Fargate Spot; if it is interrupted or Spot capacity is unavailable, the workflow retries once on on-demand Fargate. A task is stopped after 12 hours.
+- **Not handled:** HDR sources are converted to 8-bit without tone mapping, and only the first audio track is kept; subtitles are dropped.
 
 ### 3. Playback Flow (Secure Streaming)
 
@@ -373,7 +384,7 @@ pages in memory instead (and logs a warning).
 
 **Status Values:**
 - `uploading` – Multipart upload in progress
-- `processing` – MediaConvert job running
+- `processing` – Transcode task running
 - `ready` – HLS available for streaming
 - `failed` – Processing error occurred
 
@@ -404,8 +415,8 @@ flowchart LR
 
 ### IAM Permissions
 
-- **MediaConvert Role:** Read from raw bucket, write to processed bucket
-- **Step Functions Role:** MediaConvert API, DynamoDB UpdateItem, EventBridge
+- **Transcoder Task Role:** Read from raw bucket, write to processed bucket
+- **Step Functions Role:** ECS RunTask/StopTask/DescribeTasks on the transcoder, DynamoDB UpdateItem, EventBridge
 - **CloudFront OAC:** GetObject on processed bucket only
 
 ---
@@ -445,6 +456,7 @@ flowchart LR
 
 - AWS CLI configured with appropriate credentials
 - AWS SAM CLI installed
+- Docker (builds the transcoder image)
 - Node.js 24 and pnpm 11.25.0
 
 ### Deploy Infrastructure
@@ -453,8 +465,9 @@ flowchart LR
 pnpm install --frozen-lockfile
 pnpm deploy:stack --guided  # First time
 pnpm deploy:stack           # Subsequent deploys
+pnpm deploy:transcoder      # Build and push the ffmpeg image
 pnpm deploy:frontend        # Publish frontend
-# Or deploy the stack and frontend together:
+# Or deploy the stack, transcoder image and frontend together:
 pnpm run deploy
 ```
 
@@ -475,6 +488,6 @@ pnpm dev:frontend
 ## Monitoring
 
 - **Step Functions:** Execution history in AWS Console
-- **MediaConvert:** Job status and metrics in MediaConvert Console
+- **Transcoder:** ffmpeg progress and errors in the `/cloudcast/{env}/transcoder` CloudWatch log group; task history in the ECS console
 - **CloudWatch Logs:** Backend logs (if deployed to EC2/Lambda)
 - **DynamoDB:** Video status field tracks processing state

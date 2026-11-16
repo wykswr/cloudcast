@@ -33,7 +33,7 @@
   * **Database:** Amazon DynamoDB - NoSQL tables defined in SAM template
   * **Storage:** Amazon S3 (Two buckets: `raw-uploads`, `processed-videos`) - Created via SAM
   * **CDN:** Amazon CloudFront (Connected to `processed-videos`) - Configured in SAM template
-  * **Transcoding:** AWS Elemental MediaConvert
+  * **Transcoding:** ffmpeg in an ECS Fargate Spot task (originally AWS Elemental MediaConvert; replaced to cut per-minute transcoding cost)
   * **Orchestration:** AWS Step Functions - Coordinates the video processing workflow using optimized AWS service integrations (no Lambda required)
   * **Compute:**
       * **API Hosting:** API Gateway + Lambda (Node.js 24)
@@ -87,6 +87,8 @@ Since files can be 20GB, a single PUT request will fail. We must use **Multipart
   * Hono calls `CompleteMultipartUploadCommand` to assemble the file
 
 ### B. The Processing Flow (Step Functions with Optimized Integrations)
+
+> **Superseded:** steps 2 and 3 below describe the original MediaConvert design. The workflow now runs an ffmpeg container on Fargate Spot with `ecs:runTask.sync`; see `docs/ARCHITECTURE.md` for the current flow.
 
 **1. Trigger (S3 Event via SAM):**
 

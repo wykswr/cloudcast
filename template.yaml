@@ -18,6 +18,24 @@ Parameters:
   CloudFrontPrivateKeySsmName:
     Type: String
     Default: /cloudcast/dev/cloudfront-private-key
+  TranscoderVcpu:
+    Type: String
+    Default: '16'
+    AllowedValues: ['4', '8', '16']
+    Description: vCPUs per Fargate transcode task. Lower it if the account's Fargate vCPU quota is below 16.
+
+Mappings:
+  # Fargate task sizes at 2 GB of memory per vCPU.
+  TranscoderSize:
+    '4':
+      Cpu: '4096'
+      Memory: '8192'
+    '8':
+      Cpu: '8192'
+      Memory: '16384'
+    '16':
+      Cpu: '16384'
+      Memory: '32768'
 
 Globals:
   Function:
@@ -209,7 +227,110 @@ Resources:
             - AttributeName: created_at
               KeyType: RANGE
 
-  MediaConvertRole:
+  # Transcoding runs ffmpeg in a Fargate task. The tasks only make outbound calls (ECR, S3,
+  # CloudWatch Logs), so public subnets with a public IP avoid the cost of a NAT gateway.
+  TranscoderVpc:
+    Type: AWS::EC2::VPC
+    Properties:
+      CidrBlock: 10.42.0.0/16
+      EnableDnsSupport: true
+      EnableDnsHostnames: true
+      Tags:
+        - Key: Name
+          Value: !Sub "cloudcast-transcoder-${Env}"
+
+  TranscoderInternetGateway:
+    Type: AWS::EC2::InternetGateway
+
+  TranscoderGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref TranscoderVpc
+      InternetGatewayId: !Ref TranscoderInternetGateway
+
+  TranscoderRouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref TranscoderVpc
+
+  TranscoderDefaultRoute:
+    Type: AWS::EC2::Route
+    DependsOn: TranscoderGatewayAttachment
+    Properties:
+      RouteTableId: !Ref TranscoderRouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref TranscoderInternetGateway
+
+  TranscoderSubnetA:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TranscoderVpc
+      CidrBlock: 10.42.0.0/24
+      AvailabilityZone: !Select [0, !GetAZs ""]
+
+  TranscoderSubnetB:
+    Type: AWS::EC2::Subnet
+    Properties:
+      VpcId: !Ref TranscoderVpc
+      CidrBlock: 10.42.1.0/24
+      AvailabilityZone: !Select [1, !GetAZs ""]
+
+  TranscoderSubnetARouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref TranscoderSubnetA
+      RouteTableId: !Ref TranscoderRouteTable
+
+  TranscoderSubnetBRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref TranscoderSubnetB
+      RouteTableId: !Ref TranscoderRouteTable
+
+  TranscoderSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: CloudCast transcode tasks (outbound only)
+      VpcId: !Ref TranscoderVpc
+
+  TranscoderRepository:
+    Type: AWS::ECR::Repository
+    Properties:
+      RepositoryName: !Sub "cloudcast-transcoder-${Env}"
+      EmptyOnDelete: true
+      LifecyclePolicy:
+        LifecyclePolicyText: |
+          {
+            "rules": [
+              {
+                "rulePriority": 1,
+                "description": "Drop images replaced by a newer latest",
+                "selection": {
+                  "tagStatus": "untagged",
+                  "countType": "sinceImagePushed",
+                  "countUnit": "days",
+                  "countNumber": 1
+                },
+                "action": { "type": "expire" }
+              }
+            ]
+          }
+
+  TranscoderCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Sub "CloudCast-Transcoder-${Env}"
+      CapacityProviders:
+        - FARGATE
+        - FARGATE_SPOT
+
+  TranscoderLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Sub "/cloudcast/${Env}/transcoder"
+      RetentionInDays: 30
+
+  TranscoderExecutionRole:
     Type: AWS::IAM::Role
     Properties:
       AssumeRolePolicyDocument:
@@ -217,33 +338,65 @@ Resources:
         Statement:
           - Effect: Allow
             Principal:
-              Service: mediaconvert.amazonaws.com
+              Service: ecs-tasks.amazonaws.com
+            Action: sts:AssumeRole
+      ManagedPolicyArns:
+        - !Sub "arn:${AWS::Partition}:iam::aws:policy/service-role/AmazonECSTaskExecutionRolePolicy"
+
+  TranscoderTaskRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service: ecs-tasks.amazonaws.com
             Action: sts:AssumeRole
       Policies:
-        - PolicyName: MediaConvertS3Access
+        - PolicyName: TranscoderS3Access
           PolicyDocument:
             Version: '2012-10-17'
             Statement:
               - Effect: Allow
                 Action:
                   - s3:GetObject
-                  - s3:ListBucket
                 Resource:
-                  - !GetAtt RawUploadsBucket.Arn
                   - !Sub "${RawUploadsBucket.Arn}/*"
               - Effect: Allow
                 Action:
                   - s3:PutObject
-                  - s3:ListBucket
                 Resource:
-                  - !GetAtt ProcessedVideosBucket.Arn
                   - !Sub "${ProcessedVideosBucket.Arn}/*"
-              - Effect: Allow
-                Action:
-                  - logs:CreateLogGroup
-                  - logs:CreateLogStream
-                  - logs:PutLogEvents
-                Resource: "*"
+
+  TranscoderTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Sub "cloudcast-transcoder-${Env}"
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: !FindInMap [TranscoderSize, !Ref TranscoderVcpu, Cpu]
+      Memory: !FindInMap [TranscoderSize, !Ref TranscoderVcpu, Memory]
+      # Holds the downloaded source and the HLS output until upload.
+      EphemeralStorage:
+        SizeInGiB: 100
+      RuntimePlatform:
+        CpuArchitecture: X86_64
+        OperatingSystemFamily: LINUX
+      ExecutionRoleArn: !GetAtt TranscoderExecutionRole.Arn
+      TaskRoleArn: !GetAtt TranscoderTaskRole.Arn
+      ContainerDefinitions:
+        - Name: transcoder
+          # Pushed by `pnpm deploy:transcoder`; Fargate pulls it afresh for every task.
+          Image: !Sub "${TranscoderRepository.RepositoryUri}:latest"
+          Essential: true
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-group: !Ref TranscoderLogGroup
+              awslogs-region: !Ref AWS::Region
+              awslogs-stream-prefix: transcode
 
   ProcessingStateMachine:
     Type: AWS::Serverless::StateMachine
@@ -254,22 +407,34 @@ Resources:
         RawBucketName: !Ref RawUploadsBucket
         ProcessedBucketName: !Ref ProcessedVideosBucket
         VideosTableName: !Ref VideosTable
-        MediaConvertRoleArn: !GetAtt MediaConvertRole.Arn
+        TranscoderClusterArn: !GetAtt TranscoderCluster.Arn
+        TranscoderTaskDefinitionArn: !Ref TranscoderTaskDefinition
+        TranscoderSubnetA: !Ref TranscoderSubnetA
+        TranscoderSubnetB: !Ref TranscoderSubnetB
+        TranscoderSecurityGroupId: !GetAtt TranscoderSecurityGroup.GroupId
       Policies:
         - Statement:
             - Effect: Allow
               Action:
-                - mediaconvert:CreateJob
-                - mediaconvert:GetJob
+                - ecs:RunTask
+              Resource:
+                - !Ref TranscoderTaskDefinition
+            - Effect: Allow
+              Action:
+                - ecs:StopTask
+                - ecs:DescribeTasks
               Resource: "*"
+              Condition:
+                ArnEquals:
+                  ecs:cluster: !GetAtt TranscoderCluster.Arn
             - Effect: Allow
               Action:
                 - iam:PassRole
               Resource:
-                - !GetAtt MediaConvertRole.Arn
+                - !GetAtt TranscoderExecutionRole.Arn
+                - !GetAtt TranscoderTaskRole.Arn
             - Effect: Allow
               Action:
-                - dynamodb:GetItem
                 - dynamodb:UpdateItem
               Resource:
                 - !GetAtt VideosTable.Arn
@@ -465,6 +630,9 @@ Outputs:
     Value: VideoIdIndex
   ProcessingStateMachineArn:
     Value: !Ref ProcessingStateMachine
+  TranscoderRepositoryUri:
+    Description: ECR repository for the ffmpeg transcoder image
+    Value: !GetAtt TranscoderRepository.RepositoryUri
   MediaCloudFrontDomain:
     Value: !GetAtt MediaCloudFrontDistribution.DomainName
   MediaCloudFrontKeyId:

@@ -56,4 +56,4 @@ After an authorized deployment, verify:
 6. Delete it; confirm it disappears, media objects are removed, and reserved storage is reconciled.
 7. Request another owner's video and confirm a 404. Exercise the documentation using authenticated requests through the deployed API stage.
 
-Local Vitest tests mock AWS services and use generated signing keys. Live Cognito/S3/MediaConvert/CloudFront behavior remains unverified until the deployed smoke test runs.
+Local Vitest tests mock AWS services and use generated signing keys. Live Cognito/S3/Fargate transcoding/CloudFront behavior remains unverified until the deployed smoke test runs.
