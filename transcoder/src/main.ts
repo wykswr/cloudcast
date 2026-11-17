@@ -1,6 +1,6 @@
 import { spawn } from 'node:child_process'
-import { createReadStream, createWriteStream } from 'node:fs'
-import { mkdir, mkdtemp, readdir, stat } from 'node:fs/promises'
+import { createWriteStream } from 'node:fs'
+import { mkdir, mkdtemp, readFile, readdir } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { dirname, join, relative } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -40,12 +40,13 @@ const deps: JobDeps = {
       .map((entry) => relative(dir, join(entry.parentPath, entry.name)))
   },
   async upload(bucket, key, path, contentType) {
+    // A Buffer body, unlike a stream, can be resent, so the SDK retries transient S3 errors.
+    // Segments are a few MB each, so holding UPLOAD_CONCURRENCY of them in memory is cheap.
     await s3.send(
       new PutObjectCommand({
         Bucket: bucket,
         Key: key,
-        Body: createReadStream(path),
-        ContentLength: (await stat(path)).size,
+        Body: await readFile(path),
         ContentType: contentType,
       }),
     )
