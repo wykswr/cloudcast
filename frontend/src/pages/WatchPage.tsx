@@ -20,7 +20,7 @@ import { useVideo } from '../hooks/useVideo'
 import { useVideoActions } from '../hooks/useVideoActions'
 import { useVideoPage } from '../hooks/useVideoPage'
 import { formatBytes, formatError, formatLongDate, qualityBadge } from '../utils/format'
-import { displayTitle } from '../utils/status'
+import { barWidth, displayTitle } from '../utils/status'
 
 const UP_NEXT_LIMIT = 8
 
@@ -128,10 +128,17 @@ function WatchPage() {
     player = (
       <PlayerPanel>
         <div className="h-1 w-40 overflow-hidden rounded-full bg-night-line">
-          <div className="cc-busy h-full w-full rounded-full bg-[#f0a250]" />
+          <div
+            className="cc-busy h-full rounded-full bg-[#f0a250]"
+            style={{ width: barWidth(video.processingPercent ?? undefined) }}
+          />
         </div>
         <span className="text-[15px] font-semibold">
-          {video.status === 'uploading' ? 'Still uploading…' : 'Getting your video ready'}
+          {video.status === 'uploading'
+            ? 'Still uploading…'
+            : video.processingPercent != null
+              ? `Getting your video ready · ${video.processingPercent}%`
+              : 'Getting your video ready'}
         </span>
         <span className="text-[13px] text-night-muted">
           This page will start playing on its own when it’s ready.

@@ -37,6 +37,8 @@ export const VideoItemSchema = z.object({
   sourceWidth: z.number().int().nullable().default(null),
   sourceHeight: z.number().int().nullable().default(null),
   favorite: z.boolean().default(false),
+  /** How far the transcode has got, 0-99, while `processing`; null before the first report. */
+  processingPercent: z.number().int().min(0).max(100).nullable().default(null),
 })
 /** Library views the list endpoint can filter to. */
 export const VideoListFilterSchema = z.enum(['all', 'favorites', 'in-progress', 'ready'])

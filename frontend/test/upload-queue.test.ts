@@ -53,6 +53,15 @@ describe('upload queue', () => {
     expect(items.map((entry) => entry.key)).toEqual(['a'])
   })
 
+  it('records how far processing has got', () => {
+    const items = queueReducer([item('a', { stage: 'processing' }), item('b')], {
+      type: 'processing',
+      key: 'a',
+      percent: 42,
+    })
+    expect(items.map((entry) => entry.processingPercent)).toEqual([42, undefined])
+  })
+
   it('clears only finished items', () => {
     const items = [
       item('ready', { stage: 'ready' }),

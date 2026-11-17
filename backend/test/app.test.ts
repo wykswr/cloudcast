@@ -58,6 +58,7 @@ describe('Hono API', () => {
           sourceWidth: null,
           sourceHeight: null,
           favorite: false,
+          processingPercent: null,
         },
       ],
       nextCursor: null,

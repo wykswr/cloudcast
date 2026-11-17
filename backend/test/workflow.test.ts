@@ -23,6 +23,14 @@ it('tells the transcoder to write the same manifest key that MarkReady records',
     transcode.Arguments.Overrides.ContainerOverrides[0].Environment
   expect(environment.find((variable) => variable.Name === 'MANIFEST_KEY')?.Value).toBe(markReadyKey)
 })
+it('tells the transcoder which video item to report progress on', () => {
+  const environment: { Name: string; Value: string }[] =
+    transcode.Arguments.Overrides.ContainerOverrides[0].Environment
+  const value = (name: string) => environment.find((variable) => variable.Name === name)?.Value
+  expect(value('VIDEOS_TABLE')).toBe('{% $videosTable %}')
+  expect(value('USER_ID')).toBe('{% $userId %}')
+  expect(value('VIDEO_ID')).toBe('{% $videoId %}')
+})
 it.each([
   // Spot reclaimed the task, or it never started: run it again on on-demand capacity.
   ['FARGATE_SPOT', 'States.TaskFailed', '{"StopCode":"SpotInterruption"}', true],

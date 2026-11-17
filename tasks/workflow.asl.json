@@ -54,6 +54,18 @@
                   "Value": "{% $processedBucket %}"
                 },
                 {
+                  "Name": "VIDEOS_TABLE",
+                  "Value": "{% $videosTable %}"
+                },
+                {
+                  "Name": "USER_ID",
+                  "Value": "{% $userId %}"
+                },
+                {
+                  "Name": "VIDEO_ID",
+                  "Value": "{% $videoId %}"
+                },
+                {
                   "Name": "MANIFEST_KEY",
                   "Value": "{% $userId & '/' & $videoId & '/hls/' & $replace($split($key, '/')[-1], /\\.[^.]*$/, '') & '.m3u8' %}"
                 }

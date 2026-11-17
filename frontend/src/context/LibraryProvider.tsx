@@ -42,9 +42,9 @@ export function LibraryProvider({ children }: { children: ReactNode }) {
   }, [refreshSummary])
 
   const reportVideo = useCallback(
-    (video: VideoItem) => {
+    (video: VideoItem, options?: { summary?: boolean }) => {
       emit({ type: 'updated', video })
-      void refreshSummary()
+      if (options?.summary !== false) void refreshSummary()
     },
     [emit, refreshSummary],
   )

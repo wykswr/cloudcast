@@ -3,6 +3,7 @@ import { Link, useLocation } from 'react-router-dom'
 import { useUploads } from '../../context/uploads-context'
 import { isFinished, isSending, type QueueItem } from '../../lib/upload-queue'
 import { formatBytes } from '../../utils/format'
+import { barWidth } from '../../utils/status'
 import { ChevronDownIcon, UploadIcon } from '../common/icons'
 
 function detail(item: QueueItem) {
@@ -74,26 +75,28 @@ function UploadTray() {
       </div>
       <ul className="m-0 max-h-[280px] list-none overflow-y-auto p-0">
         {visible.map((item) => {
-          const showBar = isSending(item.stage) || item.stage === 'processing'
+          const processing = item.stage === 'processing'
+          const showBar = isSending(item.stage) || processing
+          const percent = processing ? item.processingPercent : item.percent
           return (
             <li key={item.key} className="flex flex-col gap-2 border-t border-[#ecece8] px-4 py-3">
               <div className="flex justify-between gap-2 text-[13px]">
                 <span className="truncate font-semibold">{item.title}</span>
-                {isSending(item.stage) ? (
-                  <span className="font-tabular shrink-0 text-ink-2">{item.percent}%</span>
+                {showBar && percent !== undefined ? (
+                  <span className="font-tabular shrink-0 text-ink-2">{percent}%</span>
                 ) : null}
               </div>
               {showBar ? (
                 <div className="h-1 overflow-hidden rounded-full bg-[#ecece8]">
                   <div
                     className={`h-full rounded-full ${
-                      item.stage === 'processing'
-                        ? 'cc-busy w-full bg-warn-bar'
+                      processing
+                        ? 'cc-busy bg-warn-bar'
                         : item.stage === 'uploading'
                           ? 'bg-accent'
                           : 'bg-[#9aa0aa]'
                     }`}
-                    style={item.stage === 'processing' ? undefined : { width: `${item.percent}%` }}
+                    style={{ width: processing ? barWidth(percent) : `${percent}%` }}
                   />
                 </div>
               ) : null}

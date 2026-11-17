@@ -25,6 +25,8 @@ export type QueueItem = {
   percent: number
   sentBytes: number
   videoId?: string
+  /** How far the server has got preparing the video, once it has said. */
+  processingPercent?: number
   error?: string
 }
 
@@ -34,6 +36,7 @@ export type QueueAction =
   | { type: 'start' }
   | { type: 'stage'; key: string; stage: QueueStage; error?: string }
   | { type: 'progress'; key: string; percent: number; sentBytes: number; videoId?: string }
+  | { type: 'processing'; key: string; percent: number }
   | { type: 'remove'; key: string }
   | { type: 'clear-finished' }
 
@@ -76,6 +79,8 @@ export function queueReducer(items: QueueItem[], action: QueueAction): QueueItem
             }
           : item,
       )
+    case 'processing':
+      return patch(action.key, { processingPercent: action.percent })
     case 'remove':
       return items.filter((item) => item.key !== action.key)
     case 'clear-finished':

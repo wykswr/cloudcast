@@ -13,8 +13,11 @@ export type LibraryContextValue = {
   summary: LibrarySummary | null
   refreshSummary: () => Promise<void>
   subscribe: (listener: (event: LibraryEvent) => void) => () => void
-  /** Tells every list about a video someone fetched fresh (e.g. its status changed). */
-  reportVideo: (video: VideoItem) => void
+  /**
+   * Tells every list about a video someone fetched fresh (e.g. its status changed). Pass
+   * `{ summary: false }` when nothing the sidebar counts changed, such as processing progress.
+   */
+  reportVideo: (video: VideoItem, options?: { summary?: boolean }) => void
   announceAdded: () => void
   toggleFavorite: (video: VideoItem) => Promise<void>
   renameVideo: (video: VideoItem, title: string) => Promise<void>

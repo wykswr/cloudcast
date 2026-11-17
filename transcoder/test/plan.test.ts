@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest'
-import { contentType, ffmpegArgs, parseProbe, selectRenditions } from '../src/plan'
+import {
+  contentType,
+  ffmpegArgs,
+  parseDuration,
+  parseProbe,
+  selectRenditions,
+  transcodePercent,
+} from '../src/plan'
 
 const names = (width: number, height: number) =>
   selectRenditions({ width, height }).map((rung) => rung.name)
@@ -63,6 +70,27 @@ describe('probe parsing', () => {
   })
 })
 
+describe('progress', () => {
+  it.each([
+    [{ format: { duration: '120.5' }, streams: [{ duration: '60' }] }, 120.5],
+    [{ format: {}, streams: [{ duration: '59.9' }, { duration: '60.2' }] }, 60.2],
+    [{ format: { duration: 'N/A' }, streams: [{}] }, null],
+    [{}, null],
+  ])('reads the duration from %j', (probe, expected) => {
+    expect(parseDuration(JSON.stringify(probe))).toBe(expected)
+  })
+  it.each([
+    [30_000_000, 120, 25],
+    [119_999_999, 120, 99],
+    [200_000_000, 120, 100],
+    [-5, 120, 0],
+    [30_000_000, null, null],
+    [Number.NaN, 120, null],
+  ])('turns %i µs of %s s into %s%%', (outTimeUs, duration, expected) => {
+    expect(transcodePercent(outTimeUs, duration)).toBe(expected)
+  })
+})
+
 describe('ffmpeg arguments', () => {
   const source = { videoIndex: 2, audioIndex: 3, width: 1920, height: 1080 }
   it('maps one scaled output per rendition plus a shared audio group', () => {
@@ -82,6 +110,8 @@ describe('ffmpeg arguments', () => {
     expect(value('-hls_segment_filename')).toBe('/work/hls/%v/segment_%05d.ts')
     expect(value('-master_pl_name')).toBe('master.m3u8')
     expect(args.at(-1)).toBe('/work/hls/%v/index.m3u8')
+    expect(value('-progress')).toBe('pipe:1')
+    expect(value('-stats_period')).toBe('5')
   })
   it('omits audio options for silent sources', () => {
     const silent = { ...source, audioIndex: null }

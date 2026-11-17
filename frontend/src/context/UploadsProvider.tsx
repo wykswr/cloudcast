@@ -126,6 +126,8 @@ export function UploadsProvider({ children }: { children: ReactNode }) {
             })
             reportVideo(video)
             notify({ message: `“${displayTitle(video)}” couldn’t be prepared`, tone: 'error' })
+          } else if (video.status === 'processing' && video.processingPercent != null) {
+            dispatch({ type: 'processing', key, percent: video.processingPercent })
           }
         } catch {
           // Try again on the next tick.

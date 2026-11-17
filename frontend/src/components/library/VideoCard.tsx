@@ -2,7 +2,7 @@ import { Link } from 'react-router-dom'
 import { useUploads } from '../../context/uploads-context'
 import type { VideoActions } from '../../hooks/useVideoActions'
 import { formatDuration } from '../../utils/format'
-import { displayTitle, isInFlight } from '../../utils/status'
+import { barWidth, displayTitle, isInFlight } from '../../utils/status'
 import type { VideoItem } from '../../types'
 import Thumbnail from '../common/Thumbnail'
 import { AlertIcon, PlayIcon } from '../common/icons'
@@ -15,7 +15,12 @@ function VideoCard({ video, actions }: { video: VideoItem; actions: VideoActions
   const ready = video.status === 'ready'
   const title = displayTitle(video)
   const duration = formatDuration(video.durationSeconds)
-  const percent = video.status === 'uploading' ? progressFor(video.id) : undefined
+  const percent =
+    video.status === 'uploading'
+      ? progressFor(video.id)
+      : video.status === 'processing'
+        ? (video.processingPercent ?? undefined)
+        : undefined
 
   return (
     <article className="group relative flex min-w-0 flex-col gap-3">
@@ -48,7 +53,7 @@ function VideoCard({ video, actions }: { video: VideoItem; actions: VideoActions
             <div className="h-1 overflow-hidden rounded-full bg-white/25">
               <div
                 className={`cc-busy h-full rounded-full ${video.status === 'uploading' ? 'bg-[#7d93ff]' : 'bg-[#f0a250]'}`}
-                style={{ width: percent !== undefined ? `${percent}%` : '100%' }}
+                style={{ width: barWidth(percent) }}
               />
             </div>
           </div>
