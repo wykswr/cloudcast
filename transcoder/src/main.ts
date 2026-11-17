@@ -16,7 +16,11 @@ import { readConfig, runJob } from './job'
 import type { JobDeps } from './job'
 
 const s3 = new S3Client({})
-const dynamo = new DynamoDBClient({})
+// Progress writes are best-effort: fail fast rather than hang the job on a dead connection.
+const dynamo = new DynamoDBClient({
+  maxAttempts: 2,
+  requestHandler: { connectionTimeout: 3000, requestTimeout: 5000 },
+})
 
 const deps: JobDeps = {
   async download(bucket, key, path) {
@@ -62,12 +66,13 @@ const deps: JobDeps = {
         new UpdateItemCommand({
           TableName: target.table,
           Key: { user_id: { S: target.userId }, id: { S: target.videoId } },
-          UpdateExpression: 'SET processing_percent = :percent',
+          UpdateExpression:
+            percent === null ? 'REMOVE processing_percent' : 'SET processing_percent = :percent',
           // Never touch a video that was deleted, or that already finished or failed.
           ConditionExpression: '#status = :processing',
           ExpressionAttributeNames: { '#status': 'status' },
           ExpressionAttributeValues: {
-            ':percent': { N: String(percent) },
+            ...(percent === null ? {} : { ':percent': { N: String(percent) } }),
             ':processing': { S: 'processing' },
           },
         }),

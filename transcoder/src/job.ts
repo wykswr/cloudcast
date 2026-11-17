@@ -31,8 +31,8 @@ export type JobDeps = {
   /** Relative paths of every file under `dir`. */
   listFiles(dir: string): Promise<string[]>
   upload(bucket: string, key: string, path: string, contentType: string): Promise<void>
-  /** Records how far along the job is, 0-99. */
-  reportProgress(target: ProgressTarget, percent: number): Promise<void>
+  /** Records how far along the job is, 0-99; null clears it (progress unknown). */
+  reportProgress(target: ProgressTarget, percent: number | null): Promise<void>
   log(message: string, details?: Record<string, unknown>): void
 }
 
@@ -41,6 +41,8 @@ const UPLOAD_CONCURRENCY = 16
 const TRANSCODE_SHARE = 90
 /** The workflow marks the video ready; the job itself never claims to be finished. */
 const MAX_PERCENT = 99
+/** How long a finished job waits for its last progress writes before exiting anyway. */
+export const PROGRESS_FLUSH_MS = 10_000
 
 /**
  * Sends progress only when the whole percent goes up, one write at a time and in order. A failed
@@ -49,21 +51,42 @@ const MAX_PERCENT = 99
 function progressReporter(config: JobConfig, deps: JobDeps) {
   let last = -1
   let pending = Promise.resolve()
+  const send = (value: number | null) => {
+    const target = config.progress
+    if (!target) return
+    pending = pending
+      .then(() => deps.reportProgress(target, value))
+      .catch((error: unknown) =>
+        deps.log('Progress report failed', {
+          error: error instanceof Error ? error.message : String(error),
+        }),
+      )
+  }
   return {
     report(percent: number) {
       const value = Math.min(MAX_PERCENT, Math.max(0, Math.floor(percent)))
-      const target = config.progress
-      if (!target || value <= last) return
+      if (value <= last) return
       last = value
-      pending = pending
-        .then(() => deps.reportProgress(target, value))
-        .catch((error: unknown) =>
-          deps.log('Progress report failed', {
-            error: error instanceof Error ? error.message : String(error),
-          }),
-        )
+      send(value)
     },
-    flush: () => pending,
+    /** Back to "no progress known", so the app shows its moving full bar. */
+    clear() {
+      last = -1
+      send(null)
+    },
+    /**
+     * Waits for pending writes, but never longer than `PROGRESS_FLUSH_MS`: a stuck write must not
+     * keep a finished transcode from exiting.
+     */
+    async flush() {
+      let timer: ReturnType<typeof setTimeout> | undefined
+      const timeout = new Promise<'timeout'>((resolve) => {
+        timer = setTimeout(() => resolve('timeout'), PROGRESS_FLUSH_MS)
+      })
+      const result = await Promise.race([pending, timeout])
+      clearTimeout(timer)
+      if (result === 'timeout') deps.log('Progress reports still pending; finishing anyway')
+    },
   }
 }
 
@@ -89,8 +112,9 @@ export async function runJob(config: JobConfig, deps: JobDeps): Promise<void> {
   const inputPath = posix.join(config.workDir, 'source')
   const outputDir = posix.join(config.workDir, 'hls')
   const progress = progressReporter(config, deps)
-  // Starts the bar again from zero if this is a retry after a Spot interruption.
-  progress.report(0)
+  // Clears what an earlier attempt (a Spot interruption) reported. Nothing below 90 is reported
+  // again unless the source's duration is known, so an unmeasurable encode keeps the moving bar.
+  progress.clear()
   deps.log('Downloading source', { bucket: config.rawBucket, key: config.rawKey })
   await deps.download(config.rawBucket, config.rawKey, inputPath)
 

@@ -368,7 +368,8 @@ Resources:
                   - s3:PutObject
                 Resource:
                   - !Sub "${ProcessedVideosBucket.Arn}/*"
-              # Progress for the in-progress bar; the task only sets processing_percent.
+              # Progress for the in-progress bar. The transcoder only writes processing_percent,
+              # but IAM does not enforce that: the grant covers any attribute on the table.
               - Effect: Allow
                 Action:
                   - dynamodb:UpdateItem

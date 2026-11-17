@@ -80,7 +80,12 @@ export function queueReducer(items: QueueItem[], action: QueueAction): QueueItem
           : item,
       )
     case 'processing':
-      return patch(action.key, { processingPercent: action.percent })
+      // Polls repeat the same number; keep the same array so nothing re-renders.
+      return items.some(
+        (item) => item.key === action.key && item.processingPercent !== action.percent,
+      )
+        ? patch(action.key, { processingPercent: action.percent })
+        : items
     case 'remove':
       return items.filter((item) => item.key !== action.key)
     case 'clear-finished':

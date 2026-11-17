@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readConfig, runJob } from '../src/job'
+import { PROGRESS_FLUSH_MS, readConfig, runJob } from '../src/job'
 import type { JobDeps } from '../src/job'
 
 const env = {
@@ -60,14 +60,41 @@ describe('transcode job', () => {
     const deps = fakeDeps()
     await runJob(readConfig({ ...env, ...target }, '/work'), deps)
     const progress = { table: 'videos', userId: 'owner', videoId: 'video' }
-    // 0 at start, 25% and 50% of the 90% encode share, 90 when ffmpeg ends, then the two variant
-    // files of three uploads take it to 93 and 96.
+    // Cleared at start, 25% and 50% of the 90% encode share, 90 when ffmpeg ends, then the two
+    // variant files of three uploads take it to 93 and 96.
     expect(deps.reportProgress.mock.calls).toEqual(
-      [0, 22, 45, 90, 93, 96].map((percent) => [progress, percent]),
+      [null, 22, 45, 90, 93, 96].map((percent) => [progress, percent]),
     )
     expect(deps.reportProgress.mock.invocationCallOrder.at(-1)).toBeLessThan(
       deps.log.mock.invocationCallOrder.at(-1)!,
     )
+  })
+  it('reports nothing below 90 when the source does not say how long it is', async () => {
+    const deps = fakeDeps()
+    const undated = JSON.parse(probe) as { format?: unknown }
+    delete undated.format
+    deps.exec.mockImplementation(async (command, _args, onLine) => {
+      if (command === 'ffprobe') return JSON.stringify(undated)
+      onLine?.('out_time_us=30000000')
+      return ''
+    })
+    await runJob(readConfig({ ...env, ...target }, '/work'), deps)
+    expect(deps.reportProgress.mock.calls.map(([, percent]) => percent)).toEqual([null, 90, 93, 96])
+  })
+  it('finishes even when a progress write never returns', async () => {
+    vi.useFakeTimers()
+    try {
+      const deps = fakeDeps()
+      deps.reportProgress.mockReturnValue(new Promise(() => {}))
+      const job = runJob(readConfig({ ...env, ...target }, '/work'), deps)
+      await vi.advanceTimersByTimeAsync(PROGRESS_FLUSH_MS)
+      await job
+      expect(deps.upload).toHaveBeenCalledTimes(3)
+      expect(deps.log).toHaveBeenCalledWith('Progress reports still pending; finishing anyway')
+      expect(deps.log).toHaveBeenLastCalledWith('Done', { manifestKey: env.MANIFEST_KEY })
+    } finally {
+      vi.useRealTimers()
+    }
   })
   it('keeps going when a progress report fails', async () => {
     const deps = fakeDeps()
