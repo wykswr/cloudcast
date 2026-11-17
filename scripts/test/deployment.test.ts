@@ -16,10 +16,14 @@ const outputs = {
   UserPoolId: 'us-west-2_pool',
   UserPoolClientId: 'client',
 }
+const repository = '123456789012.dkr.ecr.us-west-2.amazonaws.com/cloudcast-transcoder-dev'
 const stackResponse = JSON.stringify({
   Stacks: [
     {
-      Outputs: Object.entries(outputs).map(([OutputKey, OutputValue]) => ({
+      Outputs: Object.entries({
+        ...outputs,
+        TranscoderRepositoryUri: repository,
+      }).map(([OutputKey, OutputValue]) => ({
         OutputKey,
         OutputValue,
       })),
@@ -30,6 +34,7 @@ function runner() {
   return {
     run: vi.fn<Runner['run']>().mockImplementation(async (_command, args) => {
       if (args[0] === 'cloudformation') return stackResponse
+      if (args[0] === 'ecr') return 'registry-password\n'
       if (args[0] === 'cloudfront' && args[1] === 'create-invalidation') return 'invalidation\n'
       return ''
     }),
@@ -78,6 +83,7 @@ describe('Node deployment tooling', () => {
       ['stack', '--region', '--dry-run'],
       ['stack', '--parameter-overrides'],
       ['frontend', '--guided'],
+      ['transcoder', '--parameter-overrides', 'Env=prod'],
       ['build-sam', '--guided'],
     ].map((args) => ({ args })),
   )('rejects unsupported or incomplete arguments: $args', ({ args }) => {
@@ -185,13 +191,66 @@ describe('Node deployment tooling', () => {
       }
     }
   })
-  it('deploys the stack before retrieving frontend outputs in the all target', async () => {
+  it('builds the transcoder image and pushes it to the stack repository without leaking the registry password', async () => {
+    const commands = runner()
+    await deploy(parseOptions(['transcoder']), commands)
+    const image = `${repository}:latest`
+    expect(commands.run.mock.calls).toEqual([
+      ['pnpm', ['--filter', 'transcoder', 'build']],
+      [
+        'aws',
+        expect.arrayContaining(['cloudformation', 'describe-stacks', 'personal']),
+        { capture: true },
+      ],
+      [
+        'aws',
+        [
+          'ecr',
+          'get-login-password',
+          '--profile',
+          'personal',
+          '--region',
+          'us-west-2',
+          '--no-cli-pager',
+        ],
+        { capture: true },
+      ],
+      [
+        'docker',
+        [
+          'login',
+          '--username',
+          'AWS',
+          '--password-stdin',
+          '123456789012.dkr.ecr.us-west-2.amazonaws.com',
+        ],
+        { input: 'registry-password' },
+      ],
+      ['docker', ['build', '--platform', 'linux/amd64', '-t', image, 'transcoder']],
+      ['docker', ['push', image]],
+    ])
+  })
+  it('stops before the image build when the repository output is missing', async () => {
+    const commands = runner()
+    commands.run.mockResolvedValueOnce('').mockResolvedValueOnce('{"Stacks":[{"Outputs":[]}]}')
+    await expect(deploy(parseOptions(['transcoder']), commands)).rejects.toThrow(
+      'TranscoderRepositoryUri',
+    )
+    expect(commands.run).toHaveBeenCalledTimes(2)
+  })
+  it('deploys the stack, then the transcoder image, then the frontend in the all target', async () => {
     const commands = runner()
     await deploy(parseOptions(['all']), commands)
     expect(commands.run.mock.calls.map(([command, args]) => [command, args[0], args[1]])).toEqual([
       ['pnpm', 'build:backend', undefined],
       ['sam', 'build', '--profile'],
       ['sam', 'deploy', '--profile'],
+      ['pnpm', '--filter', 'transcoder'],
+      ['aws', 'cloudformation', 'describe-stacks'],
+      ['aws', 'ecr', 'get-login-password'],
+      ['docker', 'login', '--username'],
+      ['docker', 'build', '--platform'],
+      ['docker', 'push', `${repository}:latest`],
       ['aws', 'cloudformation', 'describe-stacks'],
       ['pnpm', '--filter', 'frontend'],
       ['aws', 's3', 'sync'],
@@ -238,7 +297,7 @@ describe('Node deployment tooling', () => {
     expect(noId.run).toHaveBeenCalledTimes(4)
   })
   it('checks required CloudFormation outputs', () => {
-    expect(parseStackOutputs(stackResponse)).toEqual(outputs)
+    expect(parseStackOutputs(stackResponse)).toMatchObject(outputs)
     expect(() => parseStackOutputs('{')).toThrow()
     expect(() => parseStackOutputs('{"Stacks":[]}')).toThrow('deploy the SAM stack first')
   })
@@ -256,6 +315,16 @@ describe('Node deployment tooling', () => {
       },
     )
     expect(JSON.parse(output)).toEqual([projectRoot.replace(/\/$/, ''), 'personal', 'test-api'])
+    expect(
+      await createRunner(false).run(
+        process.execPath,
+        [
+          '-e',
+          "process.stdin.setEncoding('utf8').on('data', (d) => process.stdout.write(d.toUpperCase()))",
+        ],
+        { capture: true, input: 'secret' },
+      ),
+    ).toBe('SECRET')
     await expect(
       createRunner(false).run(process.execPath, ['-e', 'process.exit(3)']),
     ).rejects.toThrow('exit 3')
@@ -265,5 +334,6 @@ describe('Node deployment tooling', () => {
     expect(await createRunner(true).run('nonexistent-cloudcast-command', [])).toBe('')
     await deploy(parseOptions(['all', '--dry-run']))
     expect(logging).toHaveBeenCalledWith(expect.stringContaining('s3://<FrontendBucketName>/'))
+    expect(logging).toHaveBeenCalledWith('docker push <TranscoderRepositoryUri>:latest')
   })
 })

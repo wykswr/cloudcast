@@ -169,6 +169,12 @@ importers:
         specifier: ^4.1.12
         version: 4.6.5
 
+  transcoder:
+    dependencies:
+      '@aws-sdk/client-s3':
+        specifier: ^3.922.0
+        version: 3.1149.0
+
 packages:
 
   '@asteasolutions/zod-to-openapi@9.1.0':

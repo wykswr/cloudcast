@@ -2,7 +2,8 @@ import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 
 export const projectRoot = fileURLToPath(new URL('../../', import.meta.url))
-export type Target = 'all' | 'stack' | 'backend' | 'workflow' | 'frontend' | 'build-sam'
+export type Target =
+  'all' | 'stack' | 'backend' | 'workflow' | 'transcoder' | 'frontend' | 'build-sam'
 export type DeployOptions = {
   target: Target
   stackName: string
@@ -11,12 +12,17 @@ export type DeployOptions = {
   guided: boolean
   parameterOverrides: string[]
 }
-export type RunOptions = { capture?: boolean; env?: NodeJS.ProcessEnv }
+export type RunOptions = {
+  capture?: boolean
+  env?: NodeJS.ProcessEnv
+  /** Written to the child's stdin; never logged. */
+  input?: string
+}
 export interface Runner {
   run(command: string, args: string[], options?: RunOptions): Promise<string>
 }
 
-export const help = `Usage: node scripts/deploy.ts <all|stack|backend|workflow|frontend|build-sam> [options]
+export const help = `Usage: node scripts/deploy.ts <all|stack|backend|workflow|transcoder|frontend|build-sam> [options]
 
   --stack-name <name>          CloudFormation stack (default: cloudcast)
   --region <region>            AWS region (default: us-west-2)
@@ -26,12 +32,23 @@ export const help = `Usage: node scripts/deploy.ts <all|stack|backend|workflow|f
   --help                      Show this help
 
 AWS profile is always personal. Backend and workflow commands deploy the shared
-SAM stack. The all target deploys the stack before publishing the frontend.
+SAM stack. The transcoder target builds the ffmpeg image with Docker and pushes
+it to the stack's ECR repository. The all target deploys the stack, then the
+transcoder image, then the frontend.
 `
 
+const targets: Target[] = [
+  'all',
+  'stack',
+  'backend',
+  'workflow',
+  'transcoder',
+  'frontend',
+  'build-sam',
+]
 export function parseOptions(args: string[]): DeployOptions {
   const target = args[0]
-  if (!['all', 'stack', 'backend', 'workflow', 'frontend', 'build-sam'].includes(target)) {
+  if (!targets.includes(target as Target)) {
     throw new Error(`Unknown deployment target: ${target || '(missing)'}`)
   }
   const options: DeployOptions = {
@@ -59,7 +76,7 @@ export function parseOptions(args: string[]): DeployOptions {
     } else throw new Error(`Unknown option: ${arg}`)
   }
   if (
-    ['frontend', 'build-sam'].includes(options.target) &&
+    ['transcoder', 'frontend', 'build-sam'].includes(options.target) &&
     (options.guided || options.parameterOverrides.length)
   ) {
     throw new Error('--guided and --parameter-overrides apply only to SAM deployment')
@@ -81,8 +98,13 @@ export function createRunner(dryRun: boolean): Runner {
         const child = spawn(command, args, {
           cwd: projectRoot,
           env: { ...process.env, ...options.env, AWS_PROFILE: 'personal' },
-          stdio: ['inherit', options.capture ? 'pipe' : 'inherit', 'inherit'],
+          stdio: [
+            options.input == null ? 'inherit' : 'pipe',
+            options.capture ? 'pipe' : 'inherit',
+            'inherit',
+          ],
         })
+        child.stdin?.end(options.input)
         let output = ''
         child.stdout?.setEncoding('utf8').on('data', (chunk) => {
           output += chunk
@@ -133,18 +155,25 @@ const requiredOutputs = [
   'UserPoolClientId',
 ] as const
 export type StackOutputs = Record<(typeof requiredOutputs)[number], string>
-export function parseStackOutputs(json: string): StackOutputs {
+export function parseStackOutputs<K extends string = (typeof requiredOutputs)[number]>(
+  json: string,
+  required: readonly K[] = requiredOutputs as readonly string[] as readonly K[],
+): Record<K, string> {
   const data = JSON.parse(json) as {
     Stacks?: { Outputs?: { OutputKey: string; OutputValue: string }[] }[]
   }
   const outputs = Object.fromEntries(
     (data.Stacks?.[0]?.Outputs || []).map((output) => [output.OutputKey, output.OutputValue]),
   )
-  for (const key of requiredOutputs)
+  for (const key of required)
     if (!outputs[key]) throw new Error(`Stack output ${key} is missing; deploy the SAM stack first`)
-  return outputs as StackOutputs
+  return outputs as Record<K, string>
 }
-async function deployFrontend(options: DeployOptions, runner: Runner) {
+async function readStackOutputs<K extends string>(
+  options: DeployOptions,
+  runner: Runner,
+  required: readonly K[],
+): Promise<Record<K, string>> {
   const json = await runner.run(
     'aws',
     awsArgs(options, [
@@ -157,9 +186,30 @@ async function deployFrontend(options: DeployOptions, runner: Runner) {
     ]),
     { capture: true },
   )
-  const outputs = options.dryRun
-    ? (Object.fromEntries(requiredOutputs.map((key) => [key, `<${key}>`])) as StackOutputs)
-    : parseStackOutputs(json)
+  return options.dryRun
+    ? (Object.fromEntries(required.map((key) => [key, `<${key}>`])) as Record<K, string>)
+    : parseStackOutputs(json, required)
+}
+async function deployTranscoder(options: DeployOptions, runner: Runner) {
+  await runner.run('pnpm', ['--filter', 'transcoder', 'build'])
+  const { TranscoderRepositoryUri: repository } = await readStackOutputs(options, runner, [
+    'TranscoderRepositoryUri',
+  ] as const)
+  const password = await runner.run('aws', awsArgs(options, ['ecr', 'get-login-password']), {
+    capture: true,
+  })
+  await runner.run(
+    'docker',
+    ['login', '--username', 'AWS', '--password-stdin', repository.split('/')[0]],
+    { input: password.trim() },
+  )
+  // The task definition runs x86_64 and always pulls `latest`.
+  const image = `${repository}:latest`
+  await runner.run('docker', ['build', '--platform', 'linux/amd64', '-t', image, 'transcoder'])
+  await runner.run('docker', ['push', image])
+}
+async function deployFrontend(options: DeployOptions, runner: Runner) {
+  const outputs = await readStackOutputs(options, runner, requiredOutputs)
   // Vite gives process environment precedence over .env.production. Keep local files intact.
   await runner.run('pnpm', ['--filter', 'frontend', 'build'], {
     env: {
@@ -222,7 +272,9 @@ export async function deploy(
   console.log(
     `${options.dryRun ? 'Previewing' : 'Deploying'} ${options.target}: stack ${options.stackName}, region ${options.region}, profile personal`,
   )
-  if (options.target !== 'frontend') await deployStack(options, runner)
+  if (!['transcoder', 'frontend'].includes(options.target)) await deployStack(options, runner)
+  if (options.target === 'all' || options.target === 'transcoder')
+    await deployTranscoder(options, runner)
   if (options.target === 'all' || options.target === 'frontend')
     await deployFrontend(options, runner)
 }

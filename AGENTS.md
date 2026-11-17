@@ -4,7 +4,7 @@ This file provides repository-specific guidance for coding agents (Codex, Claude
 
 ## Project overview
 
-CloudCast is an AWS-backed video hosting proof of concept. Users authenticate with Cognito, upload large videos through S3 multipart upload, raw files trigger a Step Functions -> MediaConvert transcode to HLS, and playback is served from CloudFront using signed URLs.
+CloudCast is an AWS-backed video hosting proof of concept. Users authenticate with Cognito, upload large videos through S3 multipart upload, raw files trigger a Step Functions workflow that runs ffmpeg in a Fargate Spot task to transcode to HLS, and playback is served from CloudFront using signed URLs.
 
 For deeper context, see `docs/ARCHITECTURE.md` and `docs/DESIGN.md`.
 
@@ -40,9 +40,10 @@ SAM default stack: `cloudcast`.
 Default region: `us-west-2`.
 
 ```bash
-pnpm run deploy          # SAM stack, then frontend
+pnpm run deploy          # SAM stack, then transcoder image, then frontend
 pnpm deploy:backend      # Shared SAM stack (backend + workflow + infrastructure)
 pnpm deploy:workflow     # Same SAM stack deployment
+pnpm deploy:transcoder   # Builds the ffmpeg image with Docker and pushes it to the stack's ECR repository
 pnpm deploy:frontend     # Builds frontend, syncs to S3, invalidates CloudFront
 pnpm run deploy --dry-run # Prints commands without AWS calls
 ```
@@ -127,7 +128,7 @@ HLS manifest key in the processed bucket:
 
 `stem` is the original filename with only its final extension removed, preserving earlier dots.
 
-The backend derives the HLS key in `manifestKey` / `completeUpload` in `backend/src/services/uploads.ts`. The Step Functions `MarkReady` state independently derives it in `tasks/workflow.asl.json`.
+The backend derives the HLS key in `manifestKey` / `completeUpload` in `backend/src/services/uploads.ts`. The Step Functions workflow independently derives it in `tasks/workflow.asl.json`, once for the transcoder's `MANIFEST_KEY` and once in the `MarkReady` state.
 
 If you change naming on one side, change it on the other. Otherwise, the database value for `s3_key_hls` will not match the actual transcoded output.
 
@@ -143,9 +144,11 @@ Client upload logic lives in `frontend/src/lib/uploads.ts`. The 10 MB chunk size
 
 Processing is event-driven and is not called by the backend.
 
-`complete_multipart_upload` lands the object in the raw bucket. The raw bucket emits an EventBridge `Object Created` event. Step Functions runs `tasks/workflow.asl.json` using JSONata query language, calls `mediaconvert:createJob.sync`, and then writes `status=ready` directly to DynamoDB.
+`complete_multipart_upload` lands the object in the raw bucket. The raw bucket emits an EventBridge `Object Created` event. Step Functions runs `tasks/workflow.asl.json` using JSONata query language, runs the transcoder task with `ecs:runTask.sync`, and then writes `status=ready` directly to DynamoDB.
 
-Failures are handled through the workflow `Catch` path, which writes `status=failed`.
+The transcoder lives in `transcoder/`: a Node entrypoint (`src/main.ts`) that downloads the source, probes it, runs one ffmpeg command built by `src/plan.ts` (rendition ladder and HLS layout), and uploads the result. The workflow passes it the manifest key to write as `MANIFEST_KEY`, so the transcoder does not derive key names itself. It is bundled with esbuild and shipped as a Docker image; `template.yaml` defines the ECR repository, ECS cluster, task definition, and the small public-subnet VPC the tasks run in.
+
+The task runs on Fargate Spot first. If that attempt ends for any reason other than the transcoder container exiting (Spot interruption, no Spot capacity), the workflow retries once on on-demand Fargate. Other failures go through the workflow `Catch` path, which writes `status=failed`.
 
 The backend does not poll processing state. The frontend polls `GET /videos/{videoId}` for each video that is still uploading or processing, until its status changes.
 

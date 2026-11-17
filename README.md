@@ -1,6 +1,6 @@
 # CloudCast
 
-CloudCast is a full-stack, AWS-backed video hosting PoC: users authenticate with Cognito, upload large videos via S3 multipart upload, videos are transcoded to HLS with MediaConvert via Step Functions, and playback is served through CloudFront using signed URLs.
+CloudCast is a full-stack, AWS-backed video hosting PoC: users authenticate with Cognito, upload large videos via S3 multipart upload, videos are transcoded to HLS by ffmpeg on Fargate Spot via Step Functions, and playback is served through CloudFront using signed URLs.
 
 - Architecture deep dive: `docs/ARCHITECTURE.md`
 - Product/design notes: `docs/DESIGN.md`
@@ -8,18 +8,20 @@ CloudCast is a full-stack, AWS-backed video hosting PoC: users authenticate with
 ## Repo layout
 
 - `docs/`: reference documentation (architecture and product/design notes)
-- `template.yaml`: AWS SAM template (API Gateway + Lambda/Hono, Cognito, S3, DynamoDB, Step Functions, CloudFront)
+- `template.yaml`: AWS SAM template (API Gateway + Lambda/Hono, Cognito, S3, DynamoDB, Step Functions, ECS/Fargate transcoder, CloudFront)
 - `backend/`: TypeScript Hono app (Node.js locally; official Hono adapter in Lambda)
 - `packages/contracts/`: shared Zod schemas and inferred API types
 - `frontend/`: React + Vite + TypeScript app (Amplify Auth, multipart upload client, HLS playback via hls.js)
-- `tasks/workflow.asl.json`: Step Functions state machine (MediaConvert job + DynamoDB status update)
+- `tasks/workflow.asl.json`: Step Functions state machine (Fargate transcode task + DynamoDB status update)
+- `transcoder/`: ffmpeg transcoder container (Node entrypoint, rendition ladder, Dockerfile)
 - `scripts/`: Node deployment commands for the SAM stack and frontend publishing
 
 ## Prerequisites
 
 - Node.js 24 and pnpm 11.25.0
 - AWS CLI configured (`aws configure --profile personal`) and AWS SAM CLI installed
-- An AWS account/region with permissions to create: IAM, Lambda, API Gateway, Cognito, DynamoDB, S3, CloudFront, Step Functions, MediaConvert, SSM Parameters
+- Docker, to build the transcoder image
+- An AWS account/region with permissions to create: IAM, Lambda, API Gateway, Cognito, DynamoDB, S3, CloudFront, Step Functions, ECS, ECR, VPC, CloudWatch Logs, SSM Parameters
 
 Enable pnpm through Corepack once after installing or switching Node versions:
 
@@ -122,7 +124,19 @@ pnpm deploy:stack --guided \
     CloudFrontPrivateKeySsmName=/cloudcast/dev/cloudfront-private-key
 ```
 
-### 3. Deploy the frontend
+### 3. Push the transcoder image
+
+The stack creates an ECR repository and a Fargate task definition that runs its `latest` image. Build and push that image (needs a running Docker daemon):
+
+```bash
+pnpm deploy:transcoder
+```
+
+Uploads fail processing until this has run once. Run it again after changing anything in `transcoder/`; the next transcode picks up the new image.
+
+Each transcode task uses 8 vCPUs by default. New AWS accounts can have a lower Fargate vCPU quota, in which case tasks fail to start; either request an increase for the "Fargate On-Demand" and "Fargate Spot" vCPU quotas or deploy with `--parameter-overrides TranscoderVcpu=4`. Use `TranscoderVcpu=16` for faster encodes at about the same cost per video.
+
+### 4. Deploy the frontend
 
 The Node command reads stack outputs once, passes the API URL and Cognito IDs to Vite, builds the frontend, syncs it to S3, and waits for a CloudFront invalidation:
 
@@ -137,7 +151,7 @@ Notes:
 ### Deploy everything or preview commands
 
 ```bash
-pnpm run deploy                        # Stack first, then frontend
+pnpm run deploy                        # Stack first, then transcoder image, then frontend
 pnpm deploy:backend                    # Shared SAM stack (backend + workflow + infrastructure)
 pnpm deploy:workflow                   # Same shared SAM deployment
 pnpm run deploy --dry-run               # Print commands; no subprocesses or AWS calls
@@ -154,7 +168,7 @@ From `template.yaml`:
 - Auth: Cognito User Pool + User Pool Client
 - Storage: `cloudcast-raw-{env}` and `cloudcast-processed-{env}` S3 buckets
 - DB: `CloudCast-Users-{env}` and `CloudCast-Videos-{env}` DynamoDB tables (+ `VideoIdIndex` and `UserCreatedIndex` GSIs)
-- Processing: Step Functions state machine triggered by raw-bucket `Object Created` events (MediaConvert → DynamoDB update)
+- Processing: Step Functions state machine triggered by raw-bucket `Object Created` events (Fargate ffmpeg task → DynamoDB update), plus the ECS cluster, task definition, ECR repository, log group, and a two-subnet public VPC the tasks run in
 - CDN:
   - CloudFront distribution for processed HLS (uses Trusted Key Groups for signed URLs)
   - CloudFront distribution for frontend static hosting (S3 + OAC)
@@ -162,7 +176,8 @@ From `template.yaml`:
 ## Troubleshooting
 
 - **CORS errors in the deployed API from localhost:** the API Gateway CORS origin is wired to the deployed frontend CloudFront domain. For local development, run the backend locally (recommended) or update the SAM template CORS config to include `http://localhost:5173`.
-- **Step Functions “failed” status:** check the execution details for the `ProcessingStateMachine` in AWS Console (MediaConvert permissions/configuration errors show up there).
+- **Step Functions “failed” status:** check the execution details for the `ProcessingStateMachine` in AWS Console (task start failures show up there). ffmpeg output is in the `/cloudcast/{env}/transcoder` CloudWatch log group.
+- **First stack deploy fails with "Unable to assume the service linked role":** the account has never used ECS. Run `aws iam create-service-linked-role --aws-service-name ecs.amazonaws.com --profile personal` and deploy again.
 - **Signed URL playback fails:** confirm `MediaCloudFrontDomain`, `MediaCloudFrontKeyId`, and that the private key SSM parameter referenced by `CLOUDFRONT_PRIVATE_KEY_SSM_NAME` exists and decrypts.
 
 ## License
