@@ -15,7 +15,7 @@ import {
   qualityBadge,
 } from '../src/utils/format'
 import { videoArt } from '../src/utils/art'
-import { STATUS_LABELS, displayTitle, isInFlight } from '../src/utils/status'
+import { STATUS_LABELS, barWidth, displayTitle, isInFlight } from '../src/utils/status'
 import { initials } from '../src/utils/user'
 import {
   STRENGTH_LABELS,
@@ -81,6 +81,15 @@ describe('isInFlight', () => {
     expect(isInFlight({ status: 'processing' })).toBe(true)
     expect(isInFlight({ status: 'ready' })).toBe(false)
     expect(isInFlight({ status: 'failed' })).toBe(false)
+  })
+})
+
+describe('progress bar width', () => {
+  it('fills the bar when progress is unknown and keeps a sliver at the start', () => {
+    expect(barWidth(undefined)).toBe('100%')
+    expect(barWidth(0)).toBe('2%')
+    expect(barWidth(57)).toBe('57%')
+    expect(barWidth(120)).toBe('100%')
   })
 })
 

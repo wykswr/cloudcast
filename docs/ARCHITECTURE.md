@@ -89,7 +89,7 @@ flowchart TD
 | `TranscoderRepository`    | ECR Repository                 | Holds the ffmpeg transcoder image            |
 | `TranscoderCluster`       | ECS Cluster                    | Fargate and Fargate Spot capacity            |
 | `TranscoderTaskDefinition`| ECS Task Definition            | Transcode task size, image, and roles        |
-| `TranscoderTaskRole`      | IAM Role                       | Read raw bucket, write processed bucket      |
+| `TranscoderTaskRole`      | IAM Role                       | Read raw bucket, write processed bucket, report progress |
 | `TranscoderVpc`           | VPC (two public subnets)       | Outbound-only network for transcode tasks    |
 | `ProcessingStateMachine`  | Step Functions State Machine   | Orchestrates video processing workflow       |
 | `CloudFrontOAC`           | CloudFront Origin Access Control| Secures S3 access to CloudFront only        |
@@ -171,6 +171,7 @@ flowchart TD
 - **Ladder:** fixed rungs at 720p, 1080p, 1440p, and 2160p (bitrate caps 2.8, 5, 9, and 16 Mb/s). The task probes the source with ffprobe and encodes every rung up to the first one the source fits inside; that top rung keeps the source's own resolution, so nothing is upscaled and a 1920x800 film tops out at 1920x800.
 - **Settings:** H.264 (libx264, `medium` preset, CRF 21 with a per-rung bitrate cap), 4-second segments with keyframes aligned across renditions, first audio track as AAC stereo at 128 kb/s in a shared audio group. All renditions are encoded in one ffmpeg run.
 - **Capacity:** 8 vCPU / 16 GB Fargate task by default (`TranscoderVcpu` parameter: 4, 8 or 16) with 100 GB of ephemeral storage. The first attempt runs on Fargate Spot; if it is interrupted or Spot capacity is unavailable, the workflow retries once on on-demand Fargate. A task is stopped after 12 hours.
+- **Progress:** the workflow passes `VIDEOS_TABLE`, `USER_ID` and `VIDEO_ID`, and the task writes `processing_percent` (0-99) onto the video item as it goes: the encode fills 0-90 (from ffmpeg's `out_time_us` against the probed duration, every 5 seconds) and uploading the output fills 90-99. Writes are conditional on `status = processing` and a failed write never fails the transcode. The API returns it as `processingPercent` only while the video is processing, and the frontend's existing polling turns it into a determinate progress bar.
 - **Not handled:** HDR sources are converted to 8-bit without tone mapping, and only the first audio track is kept; subtitles are dropped.
 
 ### 3. Playback Flow (Secure Streaming)
@@ -384,7 +385,7 @@ pages in memory instead (and logs a warning).
 
 **Status Values:**
 - `uploading` – Multipart upload in progress
-- `processing` – Transcode task running
+- `processing` – Transcode task running; `processing_percent` (0-99) tracks how far it has got
 - `ready` – HLS available for streaming
 - `failed` – Processing error occurred
 
@@ -415,7 +416,7 @@ flowchart LR
 
 ### IAM Permissions
 
-- **Transcoder Task Role:** Read from raw bucket, write to processed bucket
+- **Transcoder Task Role:** Read from raw bucket, write to processed bucket, UpdateItem on the Videos table (progress only)
 - **Step Functions Role:** ECS RunTask/StopTask/DescribeTasks on the transcoder, DynamoDB UpdateItem, EventBridge
 - **CloudFront OAC:** GetObject on processed bucket only
 

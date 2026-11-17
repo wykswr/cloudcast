@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest'
-import { readConfig, runJob } from '../src/job'
+import { PROGRESS_FLUSH_MS, readConfig, runJob } from '../src/job'
 import type { JobDeps } from '../src/job'
 
 const env = {
@@ -8,7 +8,9 @@ const env = {
   PROCESSED_BUCKET: 'processed',
   MANIFEST_KEY: 'owner/video/hls/holiday.final.m3u8',
 }
+const target = { VIDEOS_TABLE: 'videos', USER_ID: 'owner', VIDEO_ID: 'video' }
 const probe = JSON.stringify({
+  format: { duration: '120.000000' },
   streams: [
     { index: 0, codec_type: 'video', width: 1280, height: 720 },
     { index: 1, codec_type: 'audio' },
@@ -20,6 +22,11 @@ function fakeDeps(): { [K in keyof JobDeps]: ReturnType<typeof vi.fn<JobDeps[K]>
     exec: vi.fn<JobDeps['exec']>().mockImplementation(async (command, _args, onLine) => {
       if (command === 'ffprobe') return probe
       onLine?.('frame=10')
+      onLine?.('out_time_us=30000000')
+      onLine?.('out_time=00:00:30.000000')
+      // Repeats and stalls do not send the same percent twice.
+      onLine?.('out_time_us=30000000')
+      onLine?.('out_time_us=60000000')
       onLine?.('out_time=00:01:00.000000')
       return ''
     }),
@@ -27,6 +34,7 @@ function fakeDeps(): { [K in keyof JobDeps]: ReturnType<typeof vi.fn<JobDeps[K]>
       .fn<JobDeps['listFiles']>()
       .mockResolvedValue(['master.m3u8', '720p/index.m3u8', '720p/segment_00000.ts']),
     upload: vi.fn<JobDeps['upload']>().mockResolvedValue(),
+    reportProgress: vi.fn<JobDeps['reportProgress']>().mockResolvedValue(),
     log: vi.fn<JobDeps['log']>(),
   }
 }
@@ -41,6 +49,64 @@ describe('transcode job', () => {
       workDir: '/work',
     })
     expect(() => readConfig({ ...env, MANIFEST_KEY: '' }, '/work')).toThrow('MANIFEST_KEY')
+    expect(readConfig({ ...env, ...target }, '/work').progress).toEqual({
+      table: 'videos',
+      userId: 'owner',
+      videoId: 'video',
+    })
+    expect(readConfig({ ...env, ...target, VIDEO_ID: '' }, '/work').progress).toBeUndefined()
+  })
+  it('reports progress as it encodes and uploads, only ever going up', async () => {
+    const deps = fakeDeps()
+    await runJob(readConfig({ ...env, ...target }, '/work'), deps)
+    const progress = { table: 'videos', userId: 'owner', videoId: 'video' }
+    // Cleared at start, 25% and 50% of the 90% encode share, 90 when ffmpeg ends, then the two
+    // variant files of three uploads take it to 93 and 96.
+    expect(deps.reportProgress.mock.calls).toEqual(
+      [null, 22, 45, 90, 93, 96].map((percent) => [progress, percent]),
+    )
+    expect(deps.reportProgress.mock.invocationCallOrder.at(-1)).toBeLessThan(
+      deps.log.mock.invocationCallOrder.at(-1)!,
+    )
+  })
+  it('reports nothing below 90 when the source does not say how long it is', async () => {
+    const deps = fakeDeps()
+    const undated = JSON.parse(probe) as { format?: unknown }
+    delete undated.format
+    deps.exec.mockImplementation(async (command, _args, onLine) => {
+      if (command === 'ffprobe') return JSON.stringify(undated)
+      onLine?.('out_time_us=30000000')
+      return ''
+    })
+    await runJob(readConfig({ ...env, ...target }, '/work'), deps)
+    expect(deps.reportProgress.mock.calls.map(([, percent]) => percent)).toEqual([null, 90, 93, 96])
+  })
+  it('finishes even when a progress write never returns', async () => {
+    vi.useFakeTimers()
+    try {
+      const deps = fakeDeps()
+      deps.reportProgress.mockReturnValue(new Promise(() => {}))
+      const job = runJob(readConfig({ ...env, ...target }, '/work'), deps)
+      await vi.advanceTimersByTimeAsync(PROGRESS_FLUSH_MS)
+      await job
+      expect(deps.upload).toHaveBeenCalledTimes(3)
+      expect(deps.log).toHaveBeenCalledWith('Progress reports still pending; finishing anyway')
+      expect(deps.log).toHaveBeenLastCalledWith('Done', { manifestKey: env.MANIFEST_KEY })
+    } finally {
+      vi.useRealTimers()
+    }
+  })
+  it('keeps going when a progress report fails', async () => {
+    const deps = fakeDeps()
+    deps.reportProgress.mockRejectedValueOnce(new Error('throttled'))
+    await runJob(readConfig({ ...env, ...target }, '/work'), deps)
+    expect(deps.log).toHaveBeenCalledWith('Progress report failed', { error: 'throttled' })
+    expect(deps.upload).toHaveBeenCalledTimes(3)
+  })
+  it('only logs progress when the workflow did not say which video it is', async () => {
+    const deps = fakeDeps()
+    await runJob(readConfig(env, '/work'), deps)
+    expect(deps.reportProgress).not.toHaveBeenCalled()
   })
   it('downloads, transcodes, then uploads variants before the renamed master playlist', async () => {
     const deps = fakeDeps()
@@ -64,8 +130,9 @@ describe('transcode job', () => {
       ],
       ['processed', env.MANIFEST_KEY, '/work/hls/master.m3u8', 'application/vnd.apple.mpegurl'],
     ])
+    expect(deps.exec.mock.calls[0][1]).toContain('-show_format')
     expect(deps.log).toHaveBeenCalledWith('Progress', { position: '00:01:00.000000' })
-    expect(deps.log).toHaveBeenCalledTimes(5)
+    expect(deps.log).toHaveBeenCalledTimes(6)
   })
   it('uploads nothing when the transcode fails', async () => {
     const deps = fakeDeps()

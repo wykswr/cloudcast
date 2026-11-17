@@ -13,6 +13,14 @@ export const STATUS_LABELS: Record<VideoStatus, string> = {
   failed: 'Failed',
 }
 
+/**
+ * Width for a progress bar, so a bar that has only just started still shows a sliver. Unknown
+ * progress fills the bar; it then carries the moving stripes alone.
+ */
+export function barWidth(percent: number | undefined): string {
+  return percent === undefined ? '100%' : `${Math.min(100, Math.max(2, percent))}%`
+}
+
 export function displayTitle(video: Pick<VideoItem, 'title'>): string {
   return video.title?.trim() || 'Untitled video'
 }

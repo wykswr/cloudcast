@@ -58,6 +58,35 @@ export function parseProbe(json: string): Source {
 }
 
 /**
+ * Source duration in seconds from `ffprobe -show_format -show_streams` output: the container's
+ * duration, else the longest stream's. Null when the file does not say.
+ */
+export function parseDuration(json: string): number | null {
+  const probe = JSON.parse(json) as {
+    format?: { duration?: string | number }
+    streams?: { duration?: string | number }[]
+  }
+  const seconds = (value: string | number | undefined) => {
+    const parsed = Number(value)
+    return value != null && Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  }
+  const container = seconds(probe.format?.duration)
+  if (container) return container
+  const streams = (probe.streams ?? []).map((stream) => seconds(stream.duration) ?? 0)
+  const longest = Math.max(0, ...streams)
+  return longest > 0 ? longest : null
+}
+
+/**
+ * Whole percent of the source ffmpeg has encoded, from its `out_time_us` progress value. Null when
+ * the duration is unknown, so callers can keep an indeterminate bar.
+ */
+export function transcodePercent(outTimeUs: number, durationSeconds: number | null): number | null {
+  if (!durationSeconds || !Number.isFinite(outTimeUs)) return null
+  return Math.min(100, Math.max(0, Math.floor((outTimeUs / 1e6 / durationSeconds) * 100)))
+}
+
+/**
  * Every rung up to the first one the source fits inside. That top rung keeps the source's own
  * resolution, so a 1920x800 film tops out at 1920x800 and nothing is ever upscaled.
  */
@@ -95,8 +124,9 @@ export function ffmpegArgs(
     '-nostats',
     '-progress',
     'pipe:1',
+    // Often enough to drive the progress bar people watch while the video gets ready.
     '-stats_period',
-    '60',
+    '5',
     '-i',
     inputPath,
     '-filter_complex',

@@ -39,6 +39,8 @@ export const VideoRecordSchema = z.object({
   source_width: z.number().optional(),
   source_height: z.number().optional(),
   favorite: z.boolean().optional(),
+  /** Written by the transcoder task while it works. */
+  processing_percent: z.number().optional(),
 })
 export type VideoRecord = z.infer<typeof VideoRecordSchema>
 
@@ -68,7 +70,14 @@ export function toVideoItem(video: VideoRecord): VideoItem {
     sourceWidth: video.source_width,
     sourceHeight: video.source_height,
     favorite: video.favorite,
+    processingPercent: processingPercent(video),
   })
+}
+
+/** Only meaningful while processing; a leftover value on a ready or failed video is ignored. */
+function processingPercent(video: VideoRecord): number | null {
+  if (video.status !== 'processing' || video.processing_percent == null) return null
+  return Math.min(100, Math.max(0, Math.round(video.processing_percent)))
 }
 
 export type VideoPageQuery = {

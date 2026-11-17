@@ -6,11 +6,21 @@ import { dirname, join, relative } from 'node:path'
 import { createInterface } from 'node:readline'
 import type { Readable } from 'node:stream'
 import { pipeline } from 'node:stream/promises'
+import {
+  ConditionalCheckFailedException,
+  DynamoDBClient,
+  UpdateItemCommand,
+} from '@aws-sdk/client-dynamodb'
 import { GetObjectCommand, PutObjectCommand, S3Client } from '@aws-sdk/client-s3'
 import { readConfig, runJob } from './job'
 import type { JobDeps } from './job'
 
 const s3 = new S3Client({})
+// Progress writes are best-effort: fail fast rather than hang the job on a dead connection.
+const dynamo = new DynamoDBClient({
+  maxAttempts: 2,
+  requestHandler: { connectionTimeout: 3000, requestTimeout: 5000 },
+})
 
 const deps: JobDeps = {
   async download(bucket, key, path) {
@@ -50,6 +60,27 @@ const deps: JobDeps = {
         ContentType: contentType,
       }),
     )
+  },
+  async reportProgress(target, percent) {
+    try {
+      await dynamo.send(
+        new UpdateItemCommand({
+          TableName: target.table,
+          Key: { user_id: { S: target.userId }, id: { S: target.videoId } },
+          UpdateExpression:
+            percent === null ? 'REMOVE processing_percent' : 'SET processing_percent = :percent',
+          // Never touch a video that was deleted, or that already finished or failed.
+          ConditionExpression: '#status = :processing',
+          ExpressionAttributeNames: { '#status': 'status' },
+          ExpressionAttributeValues: {
+            ...(percent === null ? {} : { ':percent': { N: String(percent) } }),
+            ':processing': { S: 'processing' },
+          },
+        }),
+      )
+    } catch (error) {
+      if (!(error instanceof ConditionalCheckFailedException)) throw error
+    }
   },
   log(message, details) {
     console.log(JSON.stringify({ message, ...details }))

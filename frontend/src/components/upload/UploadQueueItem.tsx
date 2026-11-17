@@ -1,6 +1,7 @@
 import { Link } from 'react-router-dom'
 import type { QueueItem } from '../../lib/upload-queue'
 import { formatBytes } from '../../utils/format'
+import { barWidth } from '../../utils/status'
 import {
   AlertIcon,
   CheckIcon,
@@ -37,7 +38,9 @@ function stageText(item: QueueItem) {
     case 'paused':
       return `Paused · ${sent}`
     case 'processing':
-      return 'Getting it ready to play · usually a few minutes'
+      return item.processingPercent === undefined
+        ? 'Getting it ready to play · starting'
+        : 'Getting it ready to play'
     default:
       return ''
   }
@@ -48,6 +51,7 @@ function UploadQueueItem({ item, onTitle, onPause, onResume, onRemove }: UploadQ
   const bad = item.stage === 'skipped' || item.stage === 'error' || item.stage === 'failed'
   const showBar = ['queued', 'uploading', 'paused', 'processing'].includes(item.stage)
   const removable = item.stage !== 'processing'
+  const percent = item.stage === 'processing' ? item.processingPercent : item.percent
   const removeLabel = ['uploading', 'paused', 'queued', 'error'].includes(item.stage)
     ? 'Cancel upload'
     : 'Remove from list'
@@ -90,12 +94,12 @@ function UploadQueueItem({ item, onTitle, onPause, onResume, onRemove }: UploadQ
               <div
                 className={`h-full rounded-full ${
                   item.stage === 'processing'
-                    ? 'cc-busy w-full bg-warn-bar'
+                    ? 'cc-busy bg-warn-bar'
                     : item.stage === 'uploading'
                       ? 'cc-busy bg-accent'
                       : 'bg-[#9aa0aa]'
                 }`}
-                style={item.stage === 'processing' ? undefined : { width: `${item.percent}%` }}
+                style={{ width: item.stage === 'processing' ? barWidth(percent) : `${percent}%` }}
               />
             </div>
             <div className="flex justify-between gap-2 text-xs">
@@ -110,8 +114,8 @@ function UploadQueueItem({ item, onTitle, onPause, onResume, onRemove }: UploadQ
               >
                 {stageText(item)}
               </span>
-              {item.stage !== 'processing' ? (
-                <span className="font-tabular text-ink-2">{item.percent}%</span>
+              {percent !== undefined ? (
+                <span className="font-tabular text-ink-2">{percent}%</span>
               ) : null}
             </div>
           </div>

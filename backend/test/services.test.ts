@@ -20,6 +20,7 @@ import {
   encodeCursor,
   listFilter,
   matchesListQuery,
+  toVideoItem,
 } from '../src/services/videos'
 import type { PartPresigner } from '../src/services/uploads'
 import { UploadService } from '../src/services/uploads'
@@ -200,6 +201,21 @@ describe('DynamoDB/video services', () => {
     logging.mockRestore()
   })
 })
+describe('Processing progress', () => {
+  it.each([
+    ['processing', 42, 42],
+    ['processing', 41.6, 42],
+    ['processing', 140, 100],
+    ['processing', undefined, null],
+    ['ready', 99, null],
+    ['failed', 30, null],
+  ] as const)('maps %s with %s stored to %s', (status, stored, expected) => {
+    expect(toVideoItem({ ...video, status, processing_percent: stored }).processingPercent).toBe(
+      expected,
+    )
+  })
+})
+
 describe('Multipart uploads', () => {
   it('initializes user/quota, writes metadata and retains timestamps/whole-second duration', async () => {
     const { uploads, dbSend, s3Send } = setup()

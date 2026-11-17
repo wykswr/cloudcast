@@ -368,6 +368,13 @@ Resources:
                   - s3:PutObject
                 Resource:
                   - !Sub "${ProcessedVideosBucket.Arn}/*"
+              # Progress for the in-progress bar. The transcoder only writes processing_percent,
+              # but IAM does not enforce that: the grant covers any attribute on the table.
+              - Effect: Allow
+                Action:
+                  - dynamodb:UpdateItem
+                Resource:
+                  - !GetAtt VideosTable.Arn
 
   TranscoderTaskDefinition:
     Type: AWS::ECS::TaskDefinition

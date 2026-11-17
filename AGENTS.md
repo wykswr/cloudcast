@@ -148,9 +148,11 @@ Processing is event-driven and is not called by the backend.
 
 The transcoder lives in `transcoder/`: a Node entrypoint (`src/main.ts`) that downloads the source, probes it, runs one ffmpeg command built by `src/plan.ts` (rendition ladder and HLS layout), and uploads the result. The workflow passes it the manifest key to write as `MANIFEST_KEY`, so the transcoder does not derive key names itself. It is bundled with esbuild and shipped as a Docker image; `template.yaml` defines the ECR repository, ECS cluster, task definition, and the small public-subnet VPC the tasks run in.
 
+The workflow also passes `VIDEOS_TABLE`, `USER_ID` and `VIDEO_ID`, so the task can write `processing_percent` (0-99) onto the video item while it works; the API exposes it as `processingPercent` only while `status=processing`, and the frontend draws it as the in-progress bar. Those writes are conditional on `status=processing` and never fail the job.
+
 The task runs on Fargate Spot first. If that attempt ends for any reason other than the transcoder container exiting (Spot interruption, no Spot capacity), the workflow retries once on on-demand Fargate. Other failures go through the workflow `Catch` path, which writes `status=failed`.
 
-The backend does not poll processing state. The frontend polls `GET /videos/{videoId}` for each video that is still uploading or processing, until its status changes.
+The backend does not poll processing state. The frontend polls `GET /videos/{videoId}` for each video that is still uploading or processing, until its status changes, picking up `processingPercent` along the way.
 
 ### Signed playback
 
